@@ -1,0 +1,28 @@
+{
+  "name": "sutra",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "functions"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=@sutra/web",
+    "build:shared": "npm run build --workspace=@sutra/shared",
+    "build:web": "npm run build --workspace=@sutra/web",
+    "build:functions": "npm run build --workspace=@sutra/functions",
+    "build:all": "npm run build:shared && npm run build:functions && npm run build:web",
+    "lint:all": "npm run lint --workspaces",
+    "firebase:emulators": "firebase emulators:start"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/react-router-dom": "^5.3.3",
+    "typescript": "^5.2.2"
+  },
+  "dependencies": {
+    "lucide-react": "^1.68.0",
+    "react-router-dom": "^7.18.5"
+  }
+}
