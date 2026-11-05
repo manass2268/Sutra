@@ -32,7 +32,6 @@ dist-ssr
 .firebase/
 firebase-debug.log
 
-# Dependencies & Build Files (inhe push karne ki zaroorat nahi hoti)
 node_modules/
 dist/
 build/
