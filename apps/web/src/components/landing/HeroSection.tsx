@@ -1,13 +1,13 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, ArrowRight, Play, Lock, Users, Search, Settings, Phone, Video, MoreVertical, Paperclip, Smile, Send } from 'lucide-react';
+import { Shield, ArrowRight, Play, Users, Search } from 'lucide-react';
 
 export const HeroSection = () => {
   return (
     <section className="relative pt-12 lg:pt-20 pb-16 px-4 lg:px-12 overflow-hidden flex flex-col items-center bg-[#03120F] w-full">
       <div className="absolute top-1/4 left-1/4 -z-10 w-[400px] lg:w-[600px] h-[400px] lg:h-[600px] bg-[#071C17] rounded-full blur-[100px] lg:blur-[120px] opacity-80"></div>
       
-      {/* Changed to xl:grid-cols-2 so it stacks nicely on smaller laptops */}
+
       <div className="max-w-[1400px] mx-auto grid xl:grid-cols-2 gap-12 xl:gap-8 items-center w-full">
         
         {/* Left Text Content */}
@@ -36,7 +36,7 @@ export const HeroSection = () => {
           </div>
         </div>
 
-        {/* Right Dashboard & Mobile Mockup - Scaled for responsiveness */}
+      
         <div className="relative h-[400px] sm:h-[500px] lg:h-[600px] w-full flex items-center justify-center z-10 transform scale-75 sm:scale-90 lg:scale-100 origin-center xl:origin-right mt-10 xl:mt-0">
            
            {/* Desktop Mockup */}
