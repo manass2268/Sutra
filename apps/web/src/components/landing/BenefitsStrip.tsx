@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { Shield, Users, Lock, Sliders, UserCheck } from 'lucide-react';
 
 export const BenefitsStrip = () => {

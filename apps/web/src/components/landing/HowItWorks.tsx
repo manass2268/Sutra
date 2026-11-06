@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { UserPlus, Users, MessageCircle, Layers } from 'lucide-react';
 
 export const HowItWorks = () => {

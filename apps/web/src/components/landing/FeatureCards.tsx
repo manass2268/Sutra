@@ -1,4 +1,3 @@
-import React from 'react';
 import { Shield, Users, Monitor, Database, Settings } from 'lucide-react';
 
 export const FeatureCards = () => {
