@@ -1,0 +1,143 @@
+mutation CreateUser @auth(level: USER) {
+  user_insert(data: {
+    id_expr: "auth.uid",
+    username: "new_user",
+    email: "user@example.com",
+    createdAt_expr: "request.time"
+  })
+}
+
+mutation UpdateUser @auth(level: USER) {
+  user_update(key: {id_expr: "auth.uid"}, data: {bio: "Updated bio"})
+}
+
+mutation DeleteUser @auth(level: USER) {
+  user_delete(key: {id_expr: "auth.uid"})
+}
+
+query GetUser @auth(level: USER) {
+  user(key: {id_expr: "auth.uid"}) {
+    username
+    email
+  }
+}
+
+query ListUsers @auth(level: PUBLIC, insecureReason: "Publicly listing usernames for search.") {
+  users {
+    username
+  }
+}
+
+mutation CreateUserProfile @auth(level: USER) {
+  userProfile_insert(data: {
+    user: {id_expr: "auth.uid"},
+    themePreference: "dark",
+    notificationsEnabled: true
+  })
+}
+
+mutation UpdateUserProfile @auth(level: USER) {
+  userProfile_update(key: {id_expr: "auth.uid"}, data: {themePreference: "light"})
+}
+
+mutation DeleteUserProfile @auth(level: USER) {
+  userProfile_delete(key: {id_expr: "auth.uid"})
+}
+
+query GetUserProfile @auth(level: USER) {
+  userProfile(key: {id_expr: "auth.uid"}) {
+    themePreference
+  }
+}
+
+query ListUserProfiles @auth(level: USER) {
+  userProfiles {
+    user { username }
+  }
+}
+
+mutation CreateConversation @auth(level: USER) {
+  conversation_insert(data: {
+    createdAt_expr: "request.time",
+    userOne: {id_expr: "auth.uid"},
+    userTwo: {id: "00000000-0000-0000-0000-000000000000"}
+  })
+}
+
+mutation UpdateConversation @auth(level: USER) {
+  conversation_update(id: "00000000-0000-0000-0000-000000000000", data: {lastMessageSnippet: "Hello"})
+}
+
+mutation DeleteConversation @auth(level: USER) {
+  conversation_delete(id: "00000000-0000-0000-0000-000000000000")
+}
+
+query GetConversation @auth(level: USER) {
+  conversation(id: "00000000-0000-0000-0000-000000000000") {
+    lastMessageSnippet
+  }
+}
+
+query ListConversations @auth(level: USER) {
+  conversations(where: { _or: [{userOneId: {eq_expr: "auth.uid"}}, {userTwoId: {eq_expr: "auth.uid"}}] }) {
+    id
+  }
+}
+
+mutation CreateMessage @auth(level: USER) {
+  message_insert(data: {
+    conversation: {id: "00000000-0000-0000-0000-000000000000"},
+    sender: {id_expr: "auth.uid"},
+    content: "New message content",
+    createdAt_expr: "request.time"
+  })
+}
+
+mutation UpdateMessage @auth(level: USER) {
+  message_update(id: "00000000-0000-0000-0000-000000000000", data: {isRead: true, readAt_expr: "request.time"})
+}
+
+mutation DeleteMessage @auth(level: USER) {
+  message_delete(id: "00000000-0000-0000-0000-000000000000")
+}
+
+query GetMessage @auth(level: USER) {
+  message(id: "00000000-0000-0000-0000-000000000000") {
+    content
+  }
+}
+
+query ListMessages @auth(level: USER) {
+  messages(where: {conversationId: {eq: "00000000-0000-0000-0000-000000000000"}}) {
+    content
+  }
+}
+
+mutation CreateContact @auth(level: USER) {
+  contact_insert(data: {
+    owner: {id_expr: "auth.uid"},
+    contact: {id: "00000000-0000-0000-0000-000000000000"},
+    status: "active"
+  })
+}
+
+mutation UpdateContact @auth(level: USER) {
+  contact_update(id: "00000000-0000-0000-0000-000000000000", data: {nickname: "Bestie"})
+}
+
+mutation DeleteContact @auth(level: USER) {
+  contact_delete(id: "00000000-0000-0000-0000-000000000000")
+}
+
+query GetContact @auth(level: USER) {
+  contact(id: "00000000-0000-0000-0000-000000000000") {
+    status
+    nickname
+  }
+}
+
+query ListContacts @auth(level: USER) {
+  contacts(where: {ownerId: {eq_expr: "auth.uid"}}) {
+    contact { username }
+  }
+}

@@ -1,0 +1,39 @@
+type User @table {
+  username: String!
+  email: String!
+  createdAt: Timestamp!
+  avatarUrl: String
+  bio: String
+  lastSeenAt: Timestamp
+}
+
+type UserProfile @table {
+  user: User!
+  themePreference: String!
+  notificationsEnabled: Boolean!
+  phoneNumber: String
+}
+
+type Conversation @table {
+  createdAt: Timestamp!
+  userOne: User!
+  userTwo: User!
+  lastMessageSnippet: String
+  updatedAt: Timestamp
+}
+
+type Message @table {
+  conversation: Conversation!
+  sender: User!
+  content: String!
+  createdAt: Timestamp!
+  isRead: Boolean
+  readAt: Timestamp
+}
+
+type Contact @table {
+  owner: User!
+  contact: User!
+  status: String!
+  nickname: String
+}

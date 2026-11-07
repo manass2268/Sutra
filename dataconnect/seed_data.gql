@@ -1,0 +1,25 @@
+mutation SeedData @transaction {
+  user_insertMany(data: [
+    { username: "alice_dev", email: "alice@example.com", createdAt: "2023-01-01T10:00:00Z" },
+    { username: "bob_coder", email: "bob@example.com", createdAt: "2023-01-02T11:00:00Z" },
+    { username: "charlie_ux", email: "charlie@example.com", createdAt: "2023-01-03T12:00:00Z" }
+  ])
+  userProfile_insertMany(data: [
+    { userId: "00000000-0000-0000-0000-000000000000", themePreference: "dark", notificationsEnabled: true },
+    { userId: "00000000-0000-0000-0000-000000000001", themePreference: "light", notificationsEnabled: false },
+    { userId: "00000000-0000-0000-0000-000000000002", themePreference: "system", notificationsEnabled: true }
+  ])
+  conversation_insertMany(data: [
+    { createdAt: "2023-02-01T09:00:00Z", userOneId: "00000000-0000-0000-0000-000000000000", userTwoId: "00000000-0000-0000-0000-000000000001", lastMessageSnippet: "Hello!" },
+    { createdAt: "2023-02-02T10:00:00Z", userOneId: "00000000-0000-0000-0000-000000000001", userTwoId: "00000000-0000-0000-0000-000000000002", lastMessageSnippet: "Project update" }
+  ])
+  message_insertMany(data: [
+    { conversationId: "00000000-0000-0000-0000-000000000000", senderId: "00000000-0000-0000-0000-000000000000", content: "Hello!", createdAt: "2023-02-01T09:05:00Z" },
+    { conversationId: "00000000-0000-0000-0000-000000000000", senderId: "00000000-0000-0000-0000-000000000001", content: "Hi Alice!", createdAt: "2023-02-01T09:06:00Z" },
+    { conversationId: "00000000-0000-0000-0000-000000000001", senderId: "00000000-0000-0000-0000-000000000001", content: "Project update", createdAt: "2023-02-02T10:05:00Z" }
+  ])
+  contact_insertMany(data: [
+    { ownerId: "00000000-0000-0000-0000-000000000000", contactId: "00000000-0000-0000-0000-000000000001", status: "accepted", nickname: "Bob" },
+    { ownerId: "00000000-0000-0000-0000-000000000001", contactId: "00000000-0000-0000-0000-000000000000", status: "pending", nickname: "Alice" }
+  ])
+}

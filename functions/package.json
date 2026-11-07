@@ -8,6 +8,7 @@
     "lint": "eslint src/"
   },
   "dependencies": {
+    "@dataconnect/admin-generated": "file:src/dataconnect-admin-generated",
     "@sutra/shared": "*",
     "firebase-admin": "^12.0.0",
     "firebase-functions": "^5.0.0"
