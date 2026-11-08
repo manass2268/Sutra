@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, updateProfile } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { Mail, Lock, Eye, ShieldCheck, HelpCircle, EyeOff, User, LogIn, Users, Zap, ArrowRight } from 'lucide-react';
 import Logo from '../assets/SUTRA-favicon-64.png';
@@ -34,9 +34,16 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      // 1. Account create karo
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // 2. Firebase Profile mein user ka 'Full Name' save karo
+      await updateProfile(userCredential.user, {
+        displayName: fullName
+      });
+
       alert('Account created successfully! 🎉');
-      navigate('/');
+      navigate('/dashboard'); // 3. Dashboard par bhejo
     } catch (err: any) {
       setError(err.message.replace('Firebase: ', ''));
     } finally {
@@ -51,7 +58,7 @@ export default function RegisterPage() {
     try {
       await signInWithPopup(auth, provider);
       alert('Welcome to SUTRA! 🎉');
-      navigate('/');
+      navigate('/dashboard'); // Dashboard par bhejo
     } catch (err: any) {
       setError(err.message.replace('Firebase: ', ''));
     }

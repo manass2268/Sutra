@@ -21,7 +21,7 @@ export default function LoginPage() {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      navigate('/');
+      navigate('/dashboard'); // Yahan change kiya hai
     } catch (err: any) {
       setError("Invalid Email or Password. Please try again.");
     } finally {
@@ -36,7 +36,7 @@ export default function LoginPage() {
     try {
       await signInWithPopup(auth, provider);
       alert('Welcome back to SUTRA! 🎉');
-      navigate('/');
+      navigate('/dashboard'); // Yahan change kiya hai
     } catch (err: any) {
       setError(err.message.replace('Firebase: ', ''));
     }
@@ -211,7 +211,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Google Sign In Button - Now Fully Active */}
+            {/* Google Sign In Button */}
             <button 
               type="button"
               onClick={handleGoogleSignIn}
