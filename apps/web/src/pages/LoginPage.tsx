@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { Mail, Lock, Eye, ShieldCheck, HelpCircle, Home, MessageSquare, Search, Plus, EyeOff } from 'lucide-react';
-import Logo from '../assets/SUTRA-favicon-64.png';
+import Logo from '../assets/SUTRA-Icon-1024.png';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,7 +32,8 @@ export default function LoginPage() {
       {/* Top Navbar */}
       <header className="flex justify-between items-center px-8 py-6 relative z-20">
         <div className="flex items-center gap-2">
-            <img src={Logo} alt="SUTRA Logo" className="w-12 h-12" />
+            <img src={Logo} alt="SUTRA Logo" className="w-12  h-12 mx-auto mb-4" />
+          
           <span className="text-xl font-bold tracking-wider">SUTRA</span>
         </div>
         <div className="flex gap-6 text-sm text-gray-400">
