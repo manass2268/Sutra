@@ -20,8 +20,20 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      navigate('/dashboard'); // Yahan change kiya hai
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+
+      // BACKEND SYNC: Token nikalkar Express API par bhejo
+      const token = await userCredential.user.getIdToken();
+      await fetch("http://localhost:5000/api/users/sync-profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ displayName: userCredential.user.displayName || "Sutraa User" })
+      });
+
+      navigate('/dashboard');
     } catch (err: any) {
       setError("Invalid Email or Password. Please try again.");
     } finally {
@@ -34,9 +46,21 @@ export default function LoginPage() {
     setError('');
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      const userCredential = await signInWithPopup(auth, provider);
+
+      // BACKEND SYNC: Token nikalkar Express API par bhejo
+      const token = await userCredential.user.getIdToken();
+      await fetch("http://localhost:5000/api/users/sync-profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ displayName: userCredential.user.displayName })
+      });
+
       alert('Welcome back to SUTRA! 🎉');
-      navigate('/dashboard'); // Yahan change kiya hai
+      navigate('/dashboard');
     } catch (err: any) {
       setError(err.message.replace('Firebase: ', ''));
     }
@@ -48,7 +72,7 @@ export default function LoginPage() {
       <header className="flex justify-between items-center px-8 py-6 relative z-20">
         <div className="flex items-center gap-2">
             <img src={Logo} alt="SUTRA Logo" className="w-12 h-12 mx-auto mb-4" />
-          
+
           <span className="text-xl font-bold tracking-wider">SUTRA</span>
         </div>
         <div className="flex gap-6 text-sm text-gray-400">
@@ -63,7 +87,7 @@ export default function LoginPage() {
 
       {/* Main Content Split */}
       <main className="flex-1 flex flex-col lg:flex-row items-center justify-center w-full max-w-7xl mx-auto px-8 gap-16 relative z-20">
-        
+
         {/* Left Section: Branding & Mockup */}
         <div className="flex-1 w-full max-w-xl">
           <h1 className="text-5xl lg:text-6xl font-extrabold leading-tight tracking-tight mb-4">
@@ -115,7 +139,7 @@ export default function LoginPage() {
                   </div>
                   <div className="flex-1">
                     <div className="flex justify-between items-center">
-                      <span className="font-medium text-sm text-white/90">Shalini S.</span>
+                      <span className="font-medium text-sm text-white/90">Sanskar S.</span>
                       <span className="text-[10px] text-gray-500">1:10 PM</span>
                     </div>
                     <p className="text-xs text-gray-400">The updated design is live.</p>
@@ -123,7 +147,7 @@ export default function LoginPage() {
                 </div>
               </div>
             </div>
-            
+
             {/* Floating Shield Icon */}
             <div className="absolute -bottom-6 -right-6 w-16 h-16 bg-[#00FF85]/10 rounded-2xl flex items-center justify-center border border-[#00FF85]/20 backdrop-blur-xl animate-pulse">
                <Lock size={24} className="text-[#00FF85]" />
@@ -180,7 +204,7 @@ export default function LoginPage() {
                   className="w-full pl-12 pr-12 py-3 bg-[#050A09] border border-white/10 rounded-xl focus:outline-none focus:border-[#00FF85] text-white placeholder-gray-500 transition-colors"
                   placeholder="Password"
                 />
-                <button 
+                <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-500 hover:text-white transition-colors"
@@ -212,7 +236,7 @@ export default function LoginPage() {
             </div>
 
             {/* Google Sign In Button */}
-            <button 
+            <button
               type="button"
               onClick={handleGoogleSignIn}
               className="w-full flex items-center justify-center gap-3 bg-transparent border border-white/20 hover:bg-white/5 text-white font-medium py-3 px-4 rounded-xl transition-colors"

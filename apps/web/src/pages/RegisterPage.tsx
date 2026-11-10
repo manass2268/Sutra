@@ -34,7 +34,7 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      // 1. Account create karo
+      // 1. Firebase Auth par Account create karo
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       
       // 2. Firebase Profile mein user ka 'Full Name' save karo
@@ -42,8 +42,19 @@ export default function RegisterPage() {
         displayName: fullName
       });
 
+      // 3. BACKEND SYNC: Token nikalkar Express API par bhejo
+      const token = await userCredential.user.getIdToken();
+      await fetch("http://localhost:5000/api/users/sync-profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ displayName: fullName })
+      });
+
       alert('Account created successfully! 🎉');
-      navigate('/dashboard'); // 3. Dashboard par bhejo
+      navigate('/dashboard'); // Dashboard par bhejo
     } catch (err: any) {
       setError(err.message.replace('Firebase: ', ''));
     } finally {
@@ -56,7 +67,20 @@ export default function RegisterPage() {
     setError('');
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      // 1. Google se Sign In karo
+      const userCredential = await signInWithPopup(auth, provider);
+      
+      // 2. BACKEND SYNC: Token nikalkar Express API par bhejo
+      const token = await userCredential.user.getIdToken();
+      await fetch("http://localhost:5000/api/users/sync-profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ displayName: userCredential.user.displayName })
+      });
+
       alert('Welcome to SUTRA! 🎉');
       navigate('/dashboard'); // Dashboard par bhejo
     } catch (err: any) {
