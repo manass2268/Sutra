@@ -2,17 +2,23 @@ import admin from 'firebase-admin';
 
 export const initFirebaseAdmin = () => {
   if (!admin.apps.length) {
+    
+    const safeProjectId = process.env.FIREBASE_PROJECT_ID?.trim();
+    const safeClientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
+    const safePrivateKey = process.env.FIREBASE_PRIVATE_KEY
+      ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n').replace(/"/g, '').trim()
+      : undefined;
+
     admin.initializeApp({
       credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      
-        privateKey: process.env.FIREBASE_PRIVATE_KEY
-          ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n').replace(/"/g, '')
-          : undefined,
+        projectId: safeProjectId,
+        clientEmail: safeClientEmail,
+        privateKey: safePrivateKey,
       }),
+     
+      projectId: safeProjectId, 
     });
-    console.log('Firebase Admin (Auth & Firestore) Initialized');
+    console.log(`Firebase Admin Initialized for project: ${safeProjectId}`);
   }
 };
 
