@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, updateProfile } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import { Mail, Lock, Eye, ShieldCheck, HelpCircle, EyeOff, User, LogIn, Users, Zap, ArrowRight } from 'lucide-react';
 import Logo from '../assets/SUTRA-favicon-64.png';
 
@@ -34,27 +35,26 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      // 1. Firebase Auth par Account create karo
+
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
       
-      // 2. Firebase Profile mein user ka 'Full Name' save karo
-      await updateProfile(userCredential.user, {
+     
+      await updateProfile(user, {
         displayName: fullName
       });
 
-      // 3. BACKEND SYNC: Token nikalkar Express API par bhejo
-      const token = await userCredential.user.getIdToken();
-      await fetch("http://localhost:5000/api/users/sync-profile", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ displayName: fullName })
-      });
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        email: user.email || "",
+        displayName: fullName || user.displayName || "",
+        photoURL: user.photoURL || "",
+        role: "user",
+        lastLogin: new Date().toISOString()
+      }, { merge: true });
 
       alert('Account created successfully! 🎉');
-      navigate('/dashboard'); // Dashboard par bhejo
+      navigate('/dashboard');
     } catch (err: any) {
       setError(err.message.replace('Firebase: ', ''));
     } finally {
@@ -69,20 +69,20 @@ export default function RegisterPage() {
     try {
       // 1. Google se Sign In karo
       const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
       
-      // 2. BACKEND SYNC: Token nikalkar Express API par bhejo
-      const token = await userCredential.user.getIdToken();
-      await fetch("http://localhost:5000/api/users/sync-profile", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ displayName: userCredential.user.displayName })
-      });
+      // 2. DIRECT FRONTEND FIRESTORE SYNC
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        email: user.email || "",
+        displayName: user.displayName || "Sutraa User",
+        photoURL: user.photoURL || "",
+        role: "user",
+        lastLogin: new Date().toISOString()
+      }, { merge: true });
 
       alert('Welcome to SUTRA! 🎉');
-      navigate('/dashboard'); // Dashboard par bhejo
+      navigate('/dashboard');
     } catch (err: any) {
       setError(err.message.replace('Firebase: ', ''));
     }

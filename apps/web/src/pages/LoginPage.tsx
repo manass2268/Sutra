@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase'; 
 import { Mail, Lock, Eye, ShieldCheck, HelpCircle, Home, MessageSquare, Search, Plus, EyeOff } from 'lucide-react';
 import Logo from '../assets/SUTRA-Icon-1024.png';
 
@@ -21,17 +22,17 @@ export default function LoginPage() {
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
 
-      // BACKEND SYNC: Token nikalkar Express API par bhejo
-      const token = await userCredential.user.getIdToken();
-      await fetch("http://localhost:5000/api/users/sync-profile", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ displayName: userCredential.user.displayName || "Sutraa User" })
-      });
+      // DIRECT FRONTEND FIRESTORE SYNC
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        email: user.email || "",
+        displayName: user.displayName || "Sutraa User",
+        photoURL: user.photoURL || "",
+        role: "user",
+        lastLogin: new Date().toISOString()
+      }, { merge: true });
 
       navigate('/dashboard');
     } catch (err: any) {
@@ -47,17 +48,17 @@ export default function LoginPage() {
     const provider = new GoogleAuthProvider();
     try {
       const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
 
-      // BACKEND SYNC: Token nikalkar Express API par bhejo
-      const token = await userCredential.user.getIdToken();
-      await fetch("http://localhost:5000/api/users/sync-profile", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ displayName: userCredential.user.displayName })
-      });
+      // DIRECT FRONTEND FIRESTORE SYNC
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        email: user.email || "",
+        displayName: user.displayName || "Sutraa User",
+        photoURL: user.photoURL || "",
+        role: "user",
+        lastLogin: new Date().toISOString()
+      }, { merge: true });
 
       alert('Welcome back to SUTRA! 🎉');
       navigate('/dashboard');
@@ -72,7 +73,6 @@ export default function LoginPage() {
       <header className="flex justify-between items-center px-8 py-6 relative z-20">
         <div className="flex items-center gap-2">
             <img src={Logo} alt="SUTRA Logo" className="w-12 h-12 mx-auto mb-4" />
-
           <span className="text-xl font-bold tracking-wider">SUTRA</span>
         </div>
         <div className="flex gap-6 text-sm text-gray-400">
