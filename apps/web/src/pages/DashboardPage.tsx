@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
+import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import {
   collection,
   query,
@@ -18,9 +18,7 @@ import {
   MessageSquare,
   Users,
   Phone,
-  Bookmark,
   Settings,
-  Moon,
   Search,
   Plus,
   MoreVertical,
@@ -33,11 +31,11 @@ import {
   Pin,
   FileText,
   ChevronRight,
-  LogOut,
   CheckCheck,
   X,
+  ArrowLeft,
+  Info,
 } from 'lucide-react';
-import Logo from '../assets/SUTRA-Icon-1024.png';
 
 interface AppUser {
   uid: string;
@@ -74,7 +72,9 @@ export default function DashboardPage() {
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'All' | 'Unread' | 'Groups' | 'Pinned'>('All');
-  const [showRightPanel, setShowRightPanel] = useState(true);
+  const [showRightPanel, setShowRightPanel] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1280 : false
+  );
 
   // New Chat / Group Modal State
   const [showNewChatModal, setShowNewChatModal] = useState(false);
@@ -113,7 +113,6 @@ export default function DashboardPage() {
         ...docSnap.data(),
       })) as ChatRoom[];
 
-      // Client-side sort by latest message (composite index error se bachne ke liye)
       chatList.sort((a, b) => {
         const timeA = a.updatedAt?.seconds || 0;
         const timeB = b.updatedAt?.seconds || 0;
@@ -126,7 +125,7 @@ export default function DashboardPage() {
     return () => unsub();
   }, [currentUser]);
 
-  // 3. Real-time Messages Listener for Active Chat
+  // 3. Real-time Messages Listener
   useEffect(() => {
     if (!activeChat) {
       setMessages([]);
@@ -150,7 +149,7 @@ export default function DashboardPage() {
     return () => unsub();
   }, [activeChat?.id]);
 
-  // Fetch all registered users for New Chat Modal
+  // Fetch registered users for Modal
   const openNewChatModal = async () => {
     setShowNewChatModal(true);
     setSelectedUsers([]);
@@ -168,7 +167,6 @@ export default function DashboardPage() {
   const startDirectChat = async (targetUser: AppUser) => {
     if (!currentUser) return;
 
-    // Check if 1-on-1 chat already exists
     const existing = chats.find(
       (c) => !c.isGroup && c.participants.includes(targetUser.uid)
     );
@@ -210,7 +208,7 @@ export default function DashboardPage() {
     setShowNewChatModal(false);
   };
 
-  // Create Group Chat (e.g., Team NEXORA)
+  // Create Group Chat
   const createGroupChat = async () => {
     if (!currentUser || !groupName.trim() || selectedUsers.length === 0) return;
 
@@ -300,78 +298,26 @@ export default function DashboardPage() {
     return nameMatch;
   });
 
-  const handleLogout = async () => {
-    await signOut(auth);
-    navigate('/login');
-  };
-
   return (
-    <div className="h-screen w-full bg-[#0D0B14] text-gray-100 flex overflow-hidden font-sans select-none">
-      {/* 1. FAR-LEFT NAVIGATION RAIL */}
-      <aside className="w-[72px] bg-[#110E1B] border-r border-white/5 flex flex-col items-center py-5 justify-between shrink-0">
-        <div className="flex flex-col items-center gap-6">
-          {/* Logo */}
-          <div className="flex flex-col items-center gap-1">
-            <img src={Logo} alt="Sutraa" className="w-10 h-10 rounded-xl shadow-lg shadow-purple-500/20" />
-            <span className="text-[11px] font-semibold tracking-wide text-gray-300">Sutraa</span>
-          </div>
-
-          {/* Nav Icons */}
-          <nav className="flex flex-col gap-3 mt-2">
-            <button className="p-3 rounded-xl bg-purple-600/20 text-purple-400 relative">
-              <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-purple-500 rounded-r-full" />
-              <MessageSquare size={20} />
-            </button>
-            <button onClick={openNewChatModal} className="p-3 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition">
-              <Users size={20} />
-            </button>
-            <button className="p-3 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition">
-              <Phone size={20} />
-            </button>
-            <button className="p-3 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition">
-              <Bookmark size={20} />
-            </button>
-            <button className="p-3 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition">
-              <Settings size={20} />
-            </button>
-          </nav>
-        </div>
-
-        {/* Bottom Profile & Logout */}
-        <div className="flex flex-col items-center gap-4">
-          <button className="p-2.5 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition">
-            <Moon size={20} />
-          </button>
-          <button onClick={handleLogout} title="Logout" className="p-2.5 rounded-xl text-gray-400 hover:bg-red-500/10 hover:text-red-400 transition">
-            <LogOut size={19} />
-          </button>
-          <div className="relative">
-            {currentUser?.photoURL ? (
-              <img src={currentUser.photoURL} alt="You" className="w-10 h-10 rounded-full object-cover border border-purple-500/40" />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center font-bold text-sm">
-                {currentUser?.displayName?.charAt(0).toUpperCase() || 'U'}
-              </div>
-            )}
-            <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 border-2 border-[#110E1B] rounded-full" />
-          </div>
-        </div>
-      </aside>
-
-      {/* 2. CHATS LIST SIDEBAR */}
-      <section className="w-[330px] bg-[#13101E] border-r border-white/5 flex flex-col shrink-0">
+    <div className="h-[calc(100vh-64px)] w-full bg-[#040B0A] text-gray-100 flex overflow-hidden font-sans relative">
+      {/* 1. CHATS LIST SIDEBAR (Full width on mobile when no chat active, fixed width on md+) */}
+      <section
+        className={`w-full md:w-[320px] lg:w-[340px] bg-[#07110E] border-r border-white/10 flex-col shrink-0 ${
+          activeChat ? 'hidden md:flex' : 'flex'
+        }`}
+      >
         {/* Header */}
         <div className="px-5 pt-5 pb-3 flex items-center justify-between">
-          <h1 className="text-xl font-bold tracking-tight">Chats</h1>
-          <div className="flex items-center gap-2">
+          <h1 className="text-xl font-bold tracking-tight text-white">Chats</h1>
+          <div className="flex items-center gap-1.5">
             <button
               onClick={openNewChatModal}
               title="New Chat / Group"
-              className="p-2 rounded-lg bg-white/5 hover:bg-purple-600/20 hover:text-purple-400 transition"
+              className="p-2 rounded-xl bg-white/5 hover:bg-[#00FF85]/15 hover:text-[#00FF85] text-gray-300 transition border border-white/5"
             >
               <Plus size={18} />
             </button>
-            <button className="p-2 rounded-lg hover:bg-white/5 text-gray-400 transition">
+            <button className="p-2 rounded-xl hover:bg-white/5 text-gray-400 hover:text-white transition">
               <MoreVertical size={18} />
             </button>
           </div>
@@ -386,7 +332,7 @@ export default function DashboardPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search chats, groups..."
-              className="w-full bg-[#1B1729] text-sm text-gray-200 placeholder-gray-500 pl-10 pr-4 py-2.5 rounded-xl border border-white/5 focus:outline-none focus:border-purple-500/50"
+              className="w-full bg-[#0B1915] text-sm text-gray-200 placeholder-gray-500 pl-10 pr-4 py-2.5 rounded-xl border border-white/10 focus:outline-none focus:border-[#00FF85]/50 transition"
             />
           </div>
         </div>
@@ -397,10 +343,10 @@ export default function DashboardPage() {
             <button
               key={tab}
               onClick={() => setActiveFilter(tab)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition shrink-0 ${
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition shrink-0 ${
                 activeFilter === tab
-                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
-                  : 'bg-[#1B1729] text-gray-400 hover:text-white'
+                  ? 'bg-[#00FF85] text-[#040B0A] shadow-md shadow-[#00FF85]/20'
+                  : 'bg-[#0B1915] text-gray-400 hover:text-white border border-white/5'
               }`}
             >
               {tab}
@@ -409,13 +355,13 @@ export default function DashboardPage() {
         </div>
 
         {/* Chat Items */}
-        <div className="flex-1 overflow-y-auto px-2 space-y-1">
+        <div className="flex-1 overflow-y-auto px-2.5 pb-4 space-y-1">
           {filteredChats.length === 0 ? (
-            <div className="text-center py-12 px-4">
-              <p className="text-sm text-gray-500 mb-3">No chats yet.</p>
+            <div className="text-center py-14 px-4">
+              <p className="text-sm text-gray-500 mb-4">No chats yet.</p>
               <button
                 onClick={openNewChatModal}
-                className="text-xs bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg font-medium transition"
+                className="text-xs bg-[#00FF85] hover:bg-[#00e677] text-[#040B0A] px-4 py-2.5 rounded-xl font-bold transition shadow-lg shadow-[#00FF85]/15"
               >
                 + Start a New Chat
               </button>
@@ -432,33 +378,33 @@ export default function DashboardPage() {
                   onClick={() => setActiveChat(chat)}
                   className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition ${
                     isSelected
-                      ? 'bg-[#211C33] border border-purple-500/20'
-                      : 'hover:bg-white/[0.03] border border-transparent'
+                      ? 'bg-[#0E241C] border border-[#00FF85]/30'
+                      : 'hover:bg-white/[0.04] border border-transparent'
                   }`}
                 >
                   <div className="relative shrink-0">
                     {chat.isGroup ? (
-                      <div className="w-11 h-11 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white">
+                      <div className="w-11 h-11 rounded-full bg-[#00FF85]/15 border border-[#00FF85]/30 flex items-center justify-center text-[#00FF85]">
                         <Users size={20} />
                       </div>
                     ) : avatar ? (
-                      <img src={avatar} alt={name} className="w-11 h-11 rounded-full object-cover" />
+                      <img src={avatar} alt={name} className="w-11 h-11 rounded-full object-cover border border-white/10" />
                     ) : (
-                      <div className="w-11 h-11 rounded-full bg-purple-900/60 text-purple-200 flex items-center justify-center font-bold">
+                      <div className="w-11 h-11 rounded-full bg-[#0F2E22] border border-[#00FF85]/20 text-[#00FF85] flex items-center justify-center font-bold">
                         {name.charAt(0).toUpperCase()}
                       </div>
                     )}
-                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 border-2 border-[#13101E] rounded-full" />
+                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-[#00FF85] border-2 border-[#07110E] rounded-full" />
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center mb-0.5">
-                      <h3 className="text-sm font-semibold text-gray-100 truncate">{name}</h3>
+                      <h3 className="text-sm font-semibold text-white truncate">{name}</h3>
                       <span className="text-[11px] text-gray-500 shrink-0">{formatTime(chat.updatedAt)}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <p className="text-xs text-gray-400 truncate pr-2">{chat.lastMessage || 'Say hi!'}</p>
-                      <CheckCheck size={14} className="text-purple-400 shrink-0" />
+                      <CheckCheck size={14} className="text-[#00FF85] shrink-0" />
                     </div>
                   </div>
                 </div>
@@ -468,49 +414,73 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* 3. MAIN CHAT WINDOW */}
-      <main className="flex-1 flex flex-col bg-[#0F0D18] relative min-w-0">
+      {/* 2. MAIN CHAT WINDOW */}
+      <main
+        className={`flex-1 flex-col bg-[#040B0A] relative min-w-0 ${
+          activeChat ? 'flex' : 'hidden md:flex'
+        }`}
+      >
         {activeChat ? (
           <>
             {/* Chat Header */}
-            <header className="h-[72px] px-6 border-b border-white/5 bg-[#13101E]/80 backdrop-blur-md flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3.5">
+            <header className="h-[68px] px-4 sm:px-6 border-b border-white/10 bg-[#07110E]/90 backdrop-blur-md flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                {/* Mobile Back Button */}
+                <button
+                  onClick={() => setActiveChat(null)}
+                  className="md:hidden p-2 -ml-1 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+
                 {activeChat.isGroup ? (
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-full bg-[#00FF85]/15 border border-[#00FF85]/30 flex items-center justify-center text-[#00FF85] shrink-0">
                     <Users size={18} />
                   </div>
                 ) : getChatAvatar(activeChat) ? (
-                  <img src={getChatAvatar(activeChat)!} alt="" className="w-10 h-10 rounded-full object-cover" />
+                  <img src={getChatAvatar(activeChat)!} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-purple-800 flex items-center justify-center font-bold">
+                  <div className="w-10 h-10 rounded-full bg-[#0F2E22] border border-[#00FF85]/20 text-[#00FF85] flex items-center justify-center font-bold shrink-0">
                     {getChatName(activeChat).charAt(0).toUpperCase()}
                   </div>
                 )}
-                <div>
-                  <h2 className="text-base font-bold text-white leading-tight">{getChatName(activeChat)}</h2>
-                  <p className="text-xs text-gray-400">
+
+                <div className="min-w-0">
+                  <h2 className="text-sm sm:text-base font-bold text-white leading-tight truncate">
+                    {getChatName(activeChat)}
+                  </h2>
+                  <p className="text-xs text-[#00FF85]/80">
                     {activeChat.isGroup ? `${activeChat.participants.length} members` : 'Online'}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-gray-400">
-                <button className="p-2.5 rounded-xl hover:bg-white/5 hover:text-white transition"><Video size={19} /></button>
-                <button className="p-2.5 rounded-xl hover:bg-white/5 hover:text-white transition"><Phone size={18} /></button>
-                <button className="p-2.5 rounded-xl hover:bg-white/5 hover:text-white transition"><Search size={18} /></button>
+              <div className="flex items-center gap-1 sm:gap-2 text-gray-400">
+                <button className="hidden sm:flex p-2.5 rounded-xl hover:bg-white/5 hover:text-white transition">
+                  <Video size={18} />
+                </button>
+                <button className="hidden sm:flex p-2.5 rounded-xl hover:bg-white/5 hover:text-white transition">
+                  <Phone size={18} />
+                </button>
+                <button className="p-2.5 rounded-xl hover:bg-white/5 hover:text-white transition">
+                  <Search size={18} />
+                </button>
                 <button
                   onClick={() => setShowRightPanel(!showRightPanel)}
-                  className={`p-2.5 rounded-xl transition ${showRightPanel ? 'bg-purple-600/20 text-purple-400' : 'hover:bg-white/5 hover:text-white'}`}
+                  title="Chat Info"
+                  className={`p-2.5 rounded-xl transition ${
+                    showRightPanel ? 'bg-[#00FF85]/15 text-[#00FF85]' : 'hover:bg-white/5 hover:text-white'
+                  }`}
                 >
-                  <MoreVertical size={18} />
+                  <Info size={18} />
                 </button>
               </div>
             </header>
 
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-4">
               <div className="flex justify-center">
-                <span className="px-3.5 py-1 rounded-full bg-[#1B1729] text-[11px] text-gray-400 border border-white/5">
+                <span className="px-3.5 py-1 rounded-full bg-[#0B1915] text-[11px] text-gray-400 border border-white/10">
                   Today
                 </span>
               </div>
@@ -520,25 +490,25 @@ export default function DashboardPage() {
                 return (
                   <div key={msg.id} className={`flex items-end gap-2.5 ${isMe ? 'justify-end' : 'justify-start'}`}>
                     {!isMe && (
-                      <div className="w-8 h-8 rounded-full bg-purple-900/60 flex items-center justify-center text-xs font-bold shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-[#0F2E22] border border-[#00FF85]/20 text-[#00FF85] flex items-center justify-center text-xs font-bold shrink-0">
                         {msg.senderName?.charAt(0).toUpperCase() || 'U'}
                       </div>
                     )}
 
                     <div
-                      className={`max-w-[70%] rounded-2xl px-4 py-2.5 shadow-md ${
+                      className={`max-w-[80%] sm:max-w-[68%] rounded-2xl px-4 py-2.5 shadow-md ${
                         isMe
-                          ? 'bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] text-white rounded-br-sm'
-                          : 'bg-[#1D192B] text-gray-100 rounded-bl-sm border border-white/5'
+                          ? 'bg-[#0E2E21] border border-[#00FF85]/35 text-white rounded-br-sm'
+                          : 'bg-[#0B1613] border border-white/10 text-gray-100 rounded-bl-sm'
                       }`}
                     >
                       {!isMe && activeChat.isGroup && (
-                        <p className="text-xs font-semibold text-purple-400 mb-1">{msg.senderName}</p>
+                        <p className="text-xs font-semibold text-[#00FF85] mb-1">{msg.senderName}</p>
                       )}
                       <p className="text-sm leading-relaxed break-words">{msg.text}</p>
-                      <div className={`flex items-center justify-end gap-1 mt-1 text-[10px] ${isMe ? 'text-purple-200' : 'text-gray-400'}`}>
+                      <div className={`flex items-center justify-end gap-1 mt-1 text-[10px] ${isMe ? 'text-[#00FF85]/70' : 'text-gray-500'}`}>
                         <span>{formatTime(msg.createdAt)}</span>
-                        {isMe && <CheckCheck size={13} />}
+                        {isMe && <CheckCheck size={13} className="text-[#00FF85]" />}
                       </div>
                     </div>
                   </div>
@@ -548,24 +518,24 @@ export default function DashboardPage() {
             </div>
 
             {/* Message Input Bar */}
-            <form onSubmit={handleSendMessage} className="p-4 bg-[#13101E] border-t border-white/5">
-              <div className="flex items-center gap-3 bg-[#1B1729] rounded-full px-4 py-2 border border-white/5 focus-within:border-purple-500/50">
-                <button type="button" className="text-gray-400 hover:text-white transition">
-                  <Paperclip size={19} />
+            <form onSubmit={handleSendMessage} className="p-3 sm:p-4 bg-[#07110E] border-t border-white/10">
+              <div className="flex items-center gap-2 sm:gap-3 bg-[#0B1915] rounded-2xl px-3 sm:px-4 py-2 border border-white/10 focus-within:border-[#00FF85]/50 transition">
+                <button type="button" className="text-gray-400 hover:text-[#00FF85] transition">
+                  <Paperclip size={18} />
                 </button>
                 <input
                   type="text"
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Type a message..."
-                  className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none py-1.5"
+                  className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none py-1.5 min-w-0"
                 />
-                <button type="button" className="text-gray-400 hover:text-white transition">
-                  <Smile size={19} />
+                <button type="button" className="hidden sm:block text-gray-400 hover:text-[#00FF85] transition">
+                  <Smile size={18} />
                 </button>
                 <button
                   type="submit"
-                  className="w-9 h-9 rounded-full bg-purple-600 hover:bg-purple-500 text-white flex items-center justify-center transition shadow-lg shadow-purple-600/30 shrink-0"
+                  className="w-9 h-9 rounded-xl bg-[#00FF85] hover:bg-[#00e677] text-[#040B0A] flex items-center justify-center transition shadow-lg shadow-[#00FF85]/20 shrink-0"
                 >
                   <Send size={16} />
                 </button>
@@ -573,17 +543,18 @@ export default function DashboardPage() {
             </form>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
-            <div className="w-20 h-20 rounded-3xl bg-purple-600/10 border border-purple-500/20 flex items-center justify-center mb-4">
-              <MessageSquare size={36} className="text-purple-400" />
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-6 relative overflow-hidden">
+            <div className="absolute w-72 h-72 bg-[#00FF85]/5 rounded-full blur-[120px] pointer-events-none" />
+            <div className="w-16 h-16 rounded-2xl bg-[#00FF85]/10 border border-[#00FF85]/25 flex items-center justify-center mb-4">
+              <MessageSquare size={30} className="text-[#00FF85]" />
             </div>
-            <h2 className="text-xl font-bold text-white mb-1">Welcome to Sutraa</h2>
+            <h2 className="text-xl font-bold text-white mb-1.5">Welcome to Sutraa</h2>
             <p className="text-sm text-gray-400 max-w-sm mb-6">
               Select a conversation from the left or start a new real-time chat with your team.
             </p>
             <button
               onClick={openNewChatModal}
-              className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-sm font-semibold transition shadow-lg shadow-purple-600/25"
+              className="px-5 py-2.5 rounded-xl bg-[#00FF85] hover:bg-[#00e677] text-[#040B0A] text-sm font-bold transition shadow-lg shadow-[#00FF85]/20"
             >
               + New Conversation
             </button>
@@ -591,111 +562,130 @@ export default function DashboardPage() {
         )}
       </main>
 
-      {/* 4. RIGHT INFO PANEL */}
+      {/* 3. RIGHT INFO PANEL (Inline on xl+, slide-over drawer on smaller screens) */}
       {activeChat && showRightPanel && (
-        <aside className="w-[300px] bg-[#13101E] border-l border-white/5 flex flex-col overflow-y-auto shrink-0">
-          {/* Profile Summary */}
-          <div className="p-6 flex flex-col items-center text-center border-b border-white/5">
-            {activeChat.isGroup ? (
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center mb-3 shadow-xl shadow-purple-600/20">
-                <Users size={34} />
-              </div>
-            ) : getChatAvatar(activeChat) ? (
-              <img src={getChatAvatar(activeChat)!} alt="" className="w-20 h-20 rounded-full object-cover mb-3" />
-            ) : (
-              <div className="w-20 h-20 rounded-full bg-purple-800 flex items-center justify-center text-2xl font-bold mb-3">
-                {getChatName(activeChat).charAt(0).toUpperCase()}
-              </div>
-            )}
-            <h3 className="text-lg font-bold text-white">{getChatName(activeChat)}</h3>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {activeChat.isGroup ? `${activeChat.participants.length} members` : 'Active now'}
-            </p>
+        <>
+          {/* Backdrop for smaller screens */}
+          <div
+            onClick={() => setShowRightPanel(false)}
+            className="fixed inset-0 bg-black/60 z-30 xl:hidden"
+          />
+          <aside className="fixed xl:static inset-y-0 right-0 z-40 w-[290px] bg-[#07110E] border-l border-white/10 flex flex-col overflow-y-auto shrink-0 shadow-2xl xl:shadow-none">
+            {/* Close button on mobile/tablet */}
+            <div className="flex justify-end p-3 xl:hidden">
+              <button
+                onClick={() => setShowRightPanel(false)}
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
 
-            {/* Quick Actions */}
-            <div className="grid grid-cols-4 gap-2 w-full mt-5">
+            {/* Profile Summary */}
+            <div className="px-6 pb-6 xl:pt-6 flex flex-col items-center text-center border-b border-white/10">
+              {activeChat.isGroup ? (
+                <div className="w-18 h-18 p-5 rounded-full bg-[#00FF85]/15 border border-[#00FF85]/30 flex items-center justify-center text-[#00FF85] mb-3">
+                  <Users size={30} />
+                </div>
+              ) : getChatAvatar(activeChat) ? (
+                <img src={getChatAvatar(activeChat)!} alt="" className="w-20 h-20 rounded-full object-cover mb-3 border border-white/10" />
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-[#0F2E22] border border-[#00FF85]/30 text-[#00FF85] flex items-center justify-center text-2xl font-bold mb-3">
+                  {getChatName(activeChat).charAt(0).toUpperCase()}
+                </div>
+              )}
+              <h3 className="text-base font-bold text-white">{getChatName(activeChat)}</h3>
+              <p className="text-xs text-[#00FF85]/80 mt-0.5">
+                {activeChat.isGroup ? `${activeChat.participants.length} members` : 'Active now'}
+              </p>
+
+              {/* Quick Actions */}
+              <div className="grid grid-cols-4 gap-2 w-full mt-5">
+                {[
+                  { icon: UserPlus, label: 'Add' },
+                  { icon: Phone, label: 'Call' },
+                  { icon: Video, label: 'Video' },
+                  { icon: MoreVertical, label: 'More' },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    className="flex flex-col items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#0B1915] hover:bg-[#00FF85]/10 hover:text-[#00FF85] border border-white/5 transition text-gray-300"
+                  >
+                    <item.icon size={16} />
+                    <span className="text-[10px] text-gray-400">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Info Links */}
+            <div className="p-4 space-y-1 border-b border-white/10">
               {[
-                { icon: UserPlus, label: 'Add' },
-                { icon: Phone, label: 'Call' },
-                { icon: Video, label: 'Video' },
-                { icon: MoreVertical, label: 'More' },
-              ].map((item) => (
+                { icon: ImageIcon, label: 'Media, files & links', count: '0' },
+                { icon: Pin, label: 'Pinned messages', count: '0' },
+                { icon: FileText, label: 'Shared documents', count: '0' },
+                { icon: Settings, label: activeChat.isGroup ? 'Group settings' : 'Chat settings', count: '' },
+              ].map((row) => (
                 <button
-                  key={item.label}
-                  className="flex flex-col items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#1B1729] hover:bg-white/10 transition"
+                  key={row.label}
+                  className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-white/5 transition text-sm text-gray-300"
                 >
-                  <item.icon size={17} className="text-gray-300" />
-                  <span className="text-[11px] text-gray-400">{item.label}</span>
+                  <div className="flex items-center gap-3">
+                    <row.icon size={16} className="text-[#00FF85]/80" />
+                    <span>{row.label}</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                    {row.count && <span>{row.count}</span>}
+                    <ChevronRight size={15} />
+                  </div>
                 </button>
               ))}
             </div>
-          </div>
 
-          {/* Info Links */}
-          <div className="p-4 space-y-1 border-b border-white/5">
-            {[
-              { icon: ImageIcon, label: 'Media, files & links', count: '0' },
-              { icon: Pin, label: 'Pinned messages', count: '0' },
-              { icon: FileText, label: 'Shared documents', count: '0' },
-              { icon: Settings, label: activeChat.isGroup ? 'Group settings' : 'Chat settings', count: '' },
-            ].map((row) => (
-              <button
-                key={row.label}
-                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-white/5 transition text-sm text-gray-300"
-              >
-                <div className="flex items-center gap-3">
-                  <row.icon size={17} className="text-gray-400" />
-                  <span>{row.label}</span>
-                </div>
-                <div className="flex items-center gap-1 text-xs text-gray-500">
-                  {row.count && <span>{row.count}</span>}
-                  <ChevronRight size={15} />
-                </div>
-              </button>
-            ))}
-          </div>
+            {/* Members List */}
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  Members ({activeChat.participants.length})
+                </span>
+                <Search size={14} className="text-gray-500" />
+              </div>
 
-          {/* Members List */}
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Members ({activeChat.participants.length})
-              </span>
-              <Search size={14} className="text-gray-500" />
-            </div>
-
-            <div className="space-y-3">
-              {activeChat.participants.map((uid) => {
-                const detail = activeChat.participantDetails?.[uid];
-                const isYou = uid === currentUser?.uid;
-                const isAdmin = uid === activeChat.createdBy;
-                return (
-                  <div key={uid} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-full bg-purple-900/70 flex items-center justify-center text-xs font-bold shrink-0">
-                        {(detail?.displayName || 'U').charAt(0).toUpperCase()}
+              <div className="space-y-3">
+                {activeChat.participants.map((uid) => {
+                  const detail = activeChat.participantDetails?.[uid];
+                  const isYou = uid === currentUser?.uid;
+                  const isAdmin = uid === activeChat.createdBy;
+                  return (
+                    <div key={uid} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-[#0F2E22] border border-[#00FF85]/20 text-[#00FF85] flex items-center justify-center text-xs font-bold shrink-0">
+                          {(detail?.displayName || 'U').charAt(0).toUpperCase()}
+                        </div>
+                        <span className="text-sm text-gray-200 truncate">
+                          {detail?.displayName || 'User'} {isYou && '(You)'}
+                        </span>
                       </div>
-                      <span className="text-sm text-gray-200 truncate">
-                        {detail?.displayName || 'User'} {isYou && '(You)'}
+                      <span className={`text-[11px] ${isAdmin ? 'text-[#00FF85] font-medium' : 'text-gray-500'}`}>
+                        {isAdmin ? 'Admin' : 'Member'}
                       </span>
                     </div>
-                    <span className={`text-[11px] ${isAdmin ? 'text-purple-400 font-medium' : 'text-gray-500'}`}>
-                      {isAdmin ? 'Admin' : 'Member'}
-                    </span>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        </aside>
+          </aside>
+        </>
       )}
 
       {/* NEW CHAT / GROUP MODAL */}
       {showNewChatModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#161224] border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#0A1512] border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold">{isCreatingGroup ? 'Create New Group' : 'Start New Chat'}</h3>
+              <h3 className="text-lg font-bold text-white">
+                {isCreatingGroup ? 'Create New Group' : 'Start New Chat'}
+              </h3>
               <button onClick={() => setShowNewChatModal(false)} className="text-gray-400 hover:text-white">
                 <X size={20} />
               </button>
@@ -704,16 +694,16 @@ export default function DashboardPage() {
             <div className="flex gap-2 mb-4">
               <button
                 onClick={() => setIsCreatingGroup(false)}
-                className={`flex-1 py-2 rounded-xl text-xs font-semibold transition ${
-                  !isCreatingGroup ? 'bg-purple-600 text-white' : 'bg-white/5 text-gray-400'
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${
+                  !isCreatingGroup ? 'bg-[#00FF85] text-[#040B0A]' : 'bg-white/5 text-gray-400 hover:text-white'
                 }`}
               >
                 Direct Message
               </button>
               <button
                 onClick={() => setIsCreatingGroup(true)}
-                className={`flex-1 py-2 rounded-xl text-xs font-semibold transition ${
-                  isCreatingGroup ? 'bg-purple-600 text-white' : 'bg-white/5 text-gray-400'
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${
+                  isCreatingGroup ? 'bg-[#00FF85] text-[#040B0A]' : 'bg-white/5 text-gray-400 hover:text-white'
                 }`}
               >
                 Create Group
@@ -726,7 +716,7 @@ export default function DashboardPage() {
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
                 placeholder="Group Name (e.g., Team NEXORA)"
-                className="w-full mb-4 bg-[#1F1A30] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                className="w-full mb-4 bg-[#050C0A] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00FF85]"
               />
             )}
 
@@ -749,20 +739,26 @@ export default function DashboardPage() {
                         }
                       }}
                       className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition ${
-                        isSelected ? 'bg-purple-600/20 border border-purple-500/40' : 'bg-white/[0.03] hover:bg-white/[0.07]'
+                        isSelected
+                          ? 'bg-[#00FF85]/15 border border-[#00FF85]/40'
+                          : 'bg-white/[0.03] hover:bg-white/[0.07] border border-transparent'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-purple-800 flex items-center justify-center font-bold text-sm">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-full bg-[#0F2E22] border border-[#00FF85]/25 text-[#00FF85] flex items-center justify-center font-bold text-sm shrink-0">
                           {u.displayName?.charAt(0).toUpperCase() || 'U'}
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-white">{u.displayName || 'Sutra User'}</p>
-                          <p className="text-xs text-gray-400">{u.email}</p>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-white truncate">{u.displayName || 'Sutra User'}</p>
+                          <p className="text-xs text-gray-400 truncate">{u.email}</p>
                         </div>
                       </div>
                       {isCreatingGroup && (
-                        <div className={`w-5 h-5 rounded-full border ${isSelected ? 'bg-purple-500 border-purple-500' : 'border-gray-500'}`} />
+                        <div
+                          className={`w-5 h-5 rounded-full border shrink-0 ${
+                            isSelected ? 'bg-[#00FF85] border-[#00FF85]' : 'border-gray-500'
+                          }`}
+                        />
                       )}
                     </div>
                   );
@@ -774,7 +770,7 @@ export default function DashboardPage() {
               <button
                 onClick={createGroupChat}
                 disabled={!groupName.trim() || selectedUsers.length === 0}
-                className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-sm font-semibold transition"
+                className="w-full py-2.5 rounded-xl bg-[#00FF85] hover:bg-[#00e677] disabled:opacity-40 text-[#040B0A] text-sm font-bold transition"
               >
                 Create Group ({selectedUsers.length} selected)
               </button>
