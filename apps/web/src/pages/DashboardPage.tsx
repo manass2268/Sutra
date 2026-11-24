@@ -1,46 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import {
-  collection,
-  query,
-  where,
-  orderBy,
-  onSnapshot,
-  addDoc,
-  serverTimestamp,
-  doc,
-  updateDoc,
-  getDocs,
-} from 'firebase/firestore';
+import {collection,query,where,orderBy,onSnapshot,addDoc,serverTimestamp,doc,updateDoc,getDocs,increment,} from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import {
-  MessageSquare,
-  Users,
-  Phone,
-  Settings,
-  Search,
-  Plus,
-  MoreVertical,
-  Video,
-  Paperclip,
-  Smile,
-  Send,
-  UserPlus,
-  Image as ImageIcon,
-  Pin,
-  FileText,
-  ChevronRight,
-  CheckCheck,
-  X,
-  ArrowLeft,
-  Info,
+import {MessageSquare,Users,Phone,Settings,Search,Plus,MoreVertical,Video,Paperclip,Smile,Send,UserPlus,Image as ImageIcon,Pin,FileText,ChevronRight,CheckCheck,X,ArrowLeft,Info,
 } from 'lucide-react';
 
 interface AppUser {
   uid: string;
   displayName: string;
   email: string;
+  username?: string;
   photoURL?: string;
 }
 
@@ -51,6 +21,8 @@ interface ChatRoom {
   participants: string[];
   participantDetails?: Record<string, { displayName: string; photoURL?: string; email?: string }>;
   lastMessage?: string;
+  lastSenderId?: string;
+  unreadCounts?: Record<string, number>;
   updatedAt?: any;
   createdBy?: string;
 }
@@ -76,15 +48,54 @@ export default function DashboardPage() {
     typeof window !== 'undefined' ? window.innerWidth >= 1280 : false
   );
 
-  // New Chat / Group Modal State
+  // Resizable Chats Sidebar State
+  const [chatListWidth, setChatListWidth] = useState(340);
+  const isResizingRef = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // New Chat / Group Modal State (Exact Match Only)
   const [showNewChatModal, setShowNewChatModal] = useState(false);
-  const [allUsers, setAllUsers] = useState<AppUser[]>([]);
+  const [usernameQuery, setUsernameQuery] = useState('');
+  const [matchedUser, setMatchedUser] = useState<AppUser | null>(null);
+  const [searchError, setSearchError] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<AppUser[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  // Drag-to-resize handler for Chats Sidebar
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingRef.current || !containerRef.current) return;
+      const containerLeft = containerRef.current.getBoundingClientRect().left;
+      const newWidth = Math.min(Math.max(e.clientX - containerLeft, 260), 520);
+      setChatListWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      if (isResizingRef.current) {
+        isResizingRef.current = false;
+        document.body.style.cursor = 'default';
+        document.body.style.userSelect = 'auto';
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
+  const startResizing = () => {
+    isResizingRef.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
 
   // 1. Auth Listener
   useEffect(() => {
@@ -97,6 +108,18 @@ export default function DashboardPage() {
     });
     return () => unsub();
   }, [navigate]);
+
+  // Helper: Mark active chat as read
+  const markChatAsRead = async (chatId: string) => {
+    if (!currentUser) return;
+    try {
+      await updateDoc(doc(db, 'chats', chatId), {
+        [`unreadCounts.${currentUser.uid}`]: 0,
+      });
+    } catch (err) {
+      console.error('Failed to mark chat as read:', err);
+    }
+  };
 
   // 2. Real-time Chats Listener
   useEffect(() => {
@@ -125,12 +148,14 @@ export default function DashboardPage() {
     return () => unsub();
   }, [currentUser]);
 
-  // 3. Real-time Messages Listener
+  // 3. Real-time Messages Listener + Auto Mark Read
   useEffect(() => {
     if (!activeChat) {
       setMessages([]);
       return;
     }
+
+    markChatAsRead(activeChat.id);
 
     const q = query(
       collection(db, 'chats', activeChat.id, 'messages'),
@@ -143,24 +168,60 @@ export default function DashboardPage() {
         ...docSnap.data(),
       })) as Message[];
       setMessages(msgList);
+      markChatAsRead(activeChat.id);
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     });
 
     return () => unsub();
-  }, [activeChat?.id]);
+  }, [activeChat?.id, currentUser?.uid]);
 
-  // Fetch registered users for Modal
-  const openNewChatModal = async () => {
+  // Open Modal (No user list fetched)
+  const openNewChatModal = () => {
     setShowNewChatModal(true);
+    setUsernameQuery('');
+    setMatchedUser(null);
+    setSearchError('');
     setSelectedUsers([]);
     setGroupName('');
     setIsCreatingGroup(false);
+  };
 
-    const snap = await getDocs(collection(db, 'users'));
-    const usersList = snap.docs
-      .map((d) => d.data() as AppUser)
-      .filter((u) => u.uid !== currentUser?.uid);
-    setAllUsers(usersList);
+  // Exact Username / Email Match Search
+  const handleSearchUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = usernameQuery.trim();
+    if (!trimmed || !currentUser) return;
+
+    setIsSearching(true);
+    setSearchError('');
+    setMatchedUser(null);
+
+    try {
+      const usersRef = collection(db, 'users');
+
+      let snap = await getDocs(query(usersRef, where('username', '==', trimmed)));
+      if (snap.empty) {
+        snap = await getDocs(query(usersRef, where('email', '==', trimmed)));
+      }
+      if (snap.empty) {
+        snap = await getDocs(query(usersRef, where('displayName', '==', trimmed)));
+      }
+
+      if (snap.empty) {
+        setSearchError('No user found with this exact username.');
+      } else {
+        const found = snap.docs[0].data() as AppUser;
+        if (found.uid === currentUser.uid) {
+          setSearchError("You can't message yourself.");
+        } else {
+          setMatchedUser(found);
+        }
+      }
+    } catch {
+      setSearchError('Error searching user. Please try again.');
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   // Start 1-on-1 Chat
@@ -192,6 +253,11 @@ export default function DashboardPage() {
         },
       },
       lastMessage: 'Started a conversation',
+      lastSenderId: currentUser.uid,
+      unreadCounts: {
+        [currentUser.uid]: 0,
+        [targetUser.uid]: 0,
+      },
       updatedAt: serverTimestamp(),
       createdBy: currentUser.uid,
     });
@@ -220,12 +286,15 @@ export default function DashboardPage() {
         email: currentUser.email || '',
       },
     };
+    const unreadCounts: Record<string, number> = { [currentUser.uid]: 0 };
+
     selectedUsers.forEach((u) => {
       participantDetails[u.uid] = {
         displayName: u.displayName || 'User',
         photoURL: u.photoURL || '',
         email: u.email || '',
       };
+      unreadCounts[u.uid] = 1;
     });
 
     const newGroupRef = await addDoc(collection(db, 'chats'), {
@@ -234,6 +303,8 @@ export default function DashboardPage() {
       participants: participantIds,
       participantDetails,
       lastMessage: `${currentUser.displayName || 'Admin'} created group`,
+      lastSenderId: currentUser.uid,
+      unreadCounts,
       updatedAt: serverTimestamp(),
       createdBy: currentUser.uid,
     });
@@ -249,7 +320,6 @@ export default function DashboardPage() {
     setShowNewChatModal(false);
   };
 
-  // Send Real-time Message
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !activeChat || !currentUser) return;
@@ -265,10 +335,20 @@ export default function DashboardPage() {
       createdAt: serverTimestamp(),
     });
 
-    await updateDoc(doc(db, 'chats', activeChat.id), {
+    const updatePayload: Record<string, any> = {
       lastMessage: textToSend,
+      lastSenderId: currentUser.uid,
       updatedAt: serverTimestamp(),
+      [`unreadCounts.${currentUser.uid}`]: 0,
+    };
+
+    activeChat.participants.forEach((uid) => {
+      if (uid !== currentUser.uid) {
+        updatePayload[`unreadCounts.${uid}`] = increment(1);
+      }
     });
+
+    await updateDoc(doc(db, 'chats', activeChat.id), updatePayload);
   };
 
   // Helpers
@@ -284,6 +364,13 @@ export default function DashboardPage() {
     return (otherUid && chat.participantDetails?.[otherUid]?.photoURL) || null;
   };
 
+  const getUnreadCount = (chat: ChatRoom) => {
+    if (!currentUser || activeChat?.id === chat.id) return 0;
+    return chat.unreadCounts?.[currentUser.uid] || 0;
+  };
+
+  const totalUnreadChats = chats.filter((c) => getUnreadCount(c) > 0).length;
+
   const formatTime = (timestamp: any) => {
     if (!timestamp?.seconds) return '';
     return new Date(timestamp.seconds * 1000).toLocaleTimeString([], {
@@ -295,14 +382,19 @@ export default function DashboardPage() {
   const filteredChats = chats.filter((chat) => {
     const nameMatch = getChatName(chat).toLowerCase().includes(searchQuery.toLowerCase());
     if (activeFilter === 'Groups') return nameMatch && chat.isGroup;
+    if (activeFilter === 'Unread') return nameMatch && getUnreadCount(chat) > 0;
     return nameMatch;
   });
 
   return (
-    <div className="h-full w-full bg-[#040B0A] text-gray-100 flex overflow-hidden font-sans relative">
-      {/* 1. CHATS LIST SIDEBAR (Full width on mobile when no chat active, fixed width on md+) */}
+    <div
+      ref={containerRef}
+      className="h-full w-full bg-[#040B0A] text-gray-100 flex overflow-hidden font-sans relative"
+    >
+      {/* 1. RESIZABLE CHATS LIST SIDEBAR */}
       <section
-        className={`w-full md:w-[320px] lg:w-[340px] bg-[#07110E] border-r border-white/10 flex-col shrink-0 ${
+        style={{ width: typeof window !== 'undefined' && window.innerWidth >= 768 ? `${chatListWidth}px` : undefined }}
+        className={`w-full md:w-auto bg-[#07110E] border-r border-white/10 flex-col shrink-0 relative ${
           activeChat ? 'hidden md:flex' : 'flex'
         }`}
       >
@@ -343,13 +435,24 @@ export default function DashboardPage() {
             <button
               key={tab}
               onClick={() => setActiveFilter(tab)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition shrink-0 ${
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition shrink-0 flex items-center gap-1.5 ${
                 activeFilter === tab
                   ? 'bg-[#00FF85] text-[#040B0A] shadow-md shadow-[#00FF85]/20'
                   : 'bg-[#0B1915] text-gray-400 hover:text-white border border-white/5'
               }`}
             >
-              {tab}
+              <span>{tab}</span>
+              {tab === 'Unread' && totalUnreadChats > 0 && (
+                <span
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                    activeFilter === 'Unread'
+                      ? 'bg-[#040B0A] text-[#00FF85]'
+                      : 'bg-[#00FF85] text-[#040B0A]'
+                  }`}
+                >
+                  {totalUnreadChats}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -358,27 +461,38 @@ export default function DashboardPage() {
         <div className="flex-1 overflow-y-auto px-2.5 pb-4 space-y-1">
           {filteredChats.length === 0 ? (
             <div className="text-center py-14 px-4">
-              <p className="text-sm text-gray-500 mb-4">No chats yet.</p>
-              <button
-                onClick={openNewChatModal}
-                className="text-xs bg-[#00FF85] hover:bg-[#00e677] text-[#040B0A] px-4 py-2.5 rounded-xl font-bold transition shadow-lg shadow-[#00FF85]/15"
-              >
-                + Start a New Chat
-              </button>
+              <p className="text-sm text-gray-500 mb-4">
+                {activeFilter === 'Unread' ? 'No unread messages.' : 'No chats yet.'}
+              </p>
+              {activeFilter !== 'Unread' && (
+                <button
+                  onClick={openNewChatModal}
+                  className="text-xs bg-[#00FF85] hover:bg-[#00e677] text-[#040B0A] px-4 py-2.5 rounded-xl font-bold transition shadow-lg shadow-[#00FF85]/15"
+                >
+                  + Start a New Chat
+                </button>
+              )}
             </div>
           ) : (
             filteredChats.map((chat) => {
               const isSelected = activeChat?.id === chat.id;
               const name = getChatName(chat);
               const avatar = getChatAvatar(chat);
+              const unread = getUnreadCount(chat);
+              const isLastFromMe = chat.lastSenderId === currentUser?.uid;
 
               return (
                 <div
                   key={chat.id}
-                  onClick={() => setActiveChat(chat)}
+                  onClick={() => {
+                    setActiveChat(chat);
+                    if (unread > 0) markChatAsRead(chat.id);
+                  }}
                   className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition ${
                     isSelected
                       ? 'bg-[#0E241C] border border-[#00FF85]/30'
+                      : unread > 0
+                      ? 'bg-[#0B1E17] hover:bg-[#0E241C] border border-[#00FF85]/15'
                       : 'hover:bg-white/[0.04] border border-transparent'
                   }`}
                 >
@@ -399,12 +513,24 @@ export default function DashboardPage() {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center mb-0.5">
-                      <h3 className="text-sm font-semibold text-white truncate">{name}</h3>
-                      <span className="text-[11px] text-gray-500 shrink-0">{formatTime(chat.updatedAt)}</span>
+                      <h3 className={`text-sm truncate ${unread > 0 ? 'font-bold text-white' : 'font-semibold text-gray-100'}`}>
+                        {name}
+                      </h3>
+                      <span className={`text-[11px] shrink-0 ${unread > 0 ? 'text-[#00FF85] font-semibold' : 'text-gray-500'}`}>
+                        {formatTime(chat.updatedAt)}
+                      </span>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <p className="text-xs text-gray-400 truncate pr-2">{chat.lastMessage || 'Say hi!'}</p>
-                      <CheckCheck size={14} className="text-[#00FF85] shrink-0" />
+                    <div className="flex justify-between items-center gap-2">
+                      <p className={`text-xs truncate ${unread > 0 ? 'text-gray-100 font-medium' : 'text-gray-400'}`}>
+                        {chat.lastMessage || 'Say hi!'}
+                      </p>
+                      {unread > 0 ? (
+                        <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#00FF85] text-[#040B0A] text-[11px] font-bold flex items-center justify-center shrink-0 shadow-sm shadow-[#00FF85]/30">
+                          {unread > 99 ? '99+' : unread}
+                        </span>
+                      ) : isLastFromMe ? (
+                        <CheckCheck size={14} className="text-[#00FF85] shrink-0" />
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -412,6 +538,13 @@ export default function DashboardPage() {
             })
           )}
         </div>
+
+        {/* Drag Resize Handle (Desktop Only) */}
+        <div
+          onMouseDown={startResizing}
+          title="Drag to resize"
+          className="hidden md:block absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-[#00FF85]/40 active:bg-[#00FF85]/70 transition-colors z-20"
+        />
       </section>
 
       {/* 2. MAIN CHAT WINDOW */}
@@ -425,7 +558,6 @@ export default function DashboardPage() {
             {/* Chat Header */}
             <header className="h-[68px] px-4 sm:px-6 border-b border-white/10 bg-[#07110E]/90 backdrop-blur-md flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3 min-w-0">
-                {/* Mobile Back Button */}
                 <button
                   onClick={() => setActiveChat(null)}
                   className="md:hidden p-2 -ml-1 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition"
@@ -562,16 +694,14 @@ export default function DashboardPage() {
         )}
       </main>
 
-      {/* 3. RIGHT INFO PANEL (Inline on xl+, slide-over drawer on smaller screens) */}
+      {/* 3. RIGHT INFO PANEL */}
       {activeChat && showRightPanel && (
         <>
-          {/* Backdrop for smaller screens */}
           <div
             onClick={() => setShowRightPanel(false)}
             className="fixed inset-0 bg-black/60 z-30 xl:hidden"
           />
           <aside className="fixed xl:static inset-y-0 right-0 z-40 w-[290px] bg-[#07110E] border-l border-white/10 flex flex-col overflow-y-auto shrink-0 shadow-2xl xl:shadow-none">
-            {/* Close button on mobile/tablet */}
             <div className="flex justify-end p-3 xl:hidden">
               <button
                 onClick={() => setShowRightPanel(false)}
@@ -678,7 +808,7 @@ export default function DashboardPage() {
         </>
       )}
 
-      {/* NEW CHAT / GROUP MODAL */}
+      {/* NEW CHAT / GROUP MODAL (Exact Username Match Only) */}
       {showNewChatModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#0A1512] border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl">
@@ -691,9 +821,15 @@ export default function DashboardPage() {
               </button>
             </div>
 
+            {/* Mode Switch */}
             <div className="flex gap-2 mb-4">
               <button
-                onClick={() => setIsCreatingGroup(false)}
+                type="button"
+                onClick={() => {
+                  setIsCreatingGroup(false);
+                  setMatchedUser(null);
+                  setSearchError('');
+                }}
                 className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${
                   !isCreatingGroup ? 'bg-[#00FF85] text-[#040B0A]' : 'bg-white/5 text-gray-400 hover:text-white'
                 }`}
@@ -701,7 +837,12 @@ export default function DashboardPage() {
                 Direct Message
               </button>
               <button
-                onClick={() => setIsCreatingGroup(true)}
+                type="button"
+                onClick={() => {
+                  setIsCreatingGroup(true);
+                  setMatchedUser(null);
+                  setSearchError('');
+                }}
                 className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${
                   isCreatingGroup ? 'bg-[#00FF85] text-[#040B0A]' : 'bg-white/5 text-gray-400 hover:text-white'
                 }`}
@@ -710,64 +851,108 @@ export default function DashboardPage() {
               </button>
             </div>
 
+            {/* Group Name Input */}
             {isCreatingGroup && (
               <input
                 type="text"
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
                 placeholder="Group Name (e.g., Team NEXORA)"
-                className="w-full mb-4 bg-[#050C0A] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00FF85]"
+                className="w-full mb-3 bg-[#050C0A] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00FF85]"
               />
             )}
 
-            <div className="max-h-60 overflow-y-auto space-y-2 mb-4">
-              {allUsers.length === 0 ? (
-                <p className="text-xs text-gray-500 text-center py-6">No other registered users found yet.</p>
-              ) : (
-                allUsers.map((u) => {
-                  const isSelected = selectedUsers.some((s) => s.uid === u.uid);
-                  return (
-                    <div
-                      key={u.uid}
-                      onClick={() => {
-                        if (!isCreatingGroup) {
-                          startDirectChat(u);
-                        } else {
-                          setSelectedUsers((prev) =>
-                            isSelected ? prev.filter((item) => item.uid !== u.uid) : [...prev, u]
-                          );
-                        }
-                      }}
-                      className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition ${
-                        isSelected
-                          ? 'bg-[#00FF85]/15 border border-[#00FF85]/40'
-                          : 'bg-white/[0.03] hover:bg-white/[0.07] border border-transparent'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-full bg-[#0F2E22] border border-[#00FF85]/25 text-[#00FF85] flex items-center justify-center font-bold text-sm shrink-0">
-                          {u.displayName?.charAt(0).toUpperCase() || 'U'}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-white truncate">{u.displayName || 'Sutra User'}</p>
-                          <p className="text-xs text-gray-400 truncate">{u.email}</p>
-                        </div>
-                      </div>
-                      {isCreatingGroup && (
-                        <div
-                          className={`w-5 h-5 rounded-full border shrink-0 ${
-                            isSelected ? 'bg-[#00FF85] border-[#00FF85]' : 'border-gray-500'
-                          }`}
-                        />
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
+            {/* Exact Username Search Form */}
+            <form onSubmit={handleSearchUser} className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={usernameQuery}
+                onChange={(e) => setUsernameQuery(e.target.value)}
+                placeholder="Enter exact username or email..."
+                className="flex-1 bg-[#050C0A] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#00FF85]"
+              />
+              <button
+                type="submit"
+                disabled={isSearching || !usernameQuery.trim()}
+                className="px-4 py-2.5 rounded-xl bg-[#00FF85] hover:bg-[#00e677] disabled:opacity-40 text-[#040B0A] text-xs font-bold transition shrink-0"
+              >
+                {isSearching ? '...' : 'Find'}
+              </button>
+            </form>
 
+            {/* Error Message */}
+            {searchError && (
+              <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
+                {searchError}
+              </p>
+            )}
+
+            {/* Matched User Card */}
+            {matchedUser && (
+              <div className="flex items-center justify-between p-3 rounded-xl bg-[#0E241C] border border-[#00FF85]/35 mb-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-[#0F2E22] border border-[#00FF85]/30 text-[#00FF85] flex items-center justify-center font-bold text-sm shrink-0">
+                    {matchedUser.displayName?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">
+                      {matchedUser.displayName || 'Sutra User'}
+                    </p>
+                    <p className="text-xs text-gray-400 truncate">{matchedUser.email}</p>
+                  </div>
+                </div>
+
+                {!isCreatingGroup ? (
+                  <button
+                    type="button"
+                    onClick={() => startDirectChat(matchedUser)}
+                    className="px-3.5 py-1.5 rounded-lg bg-[#00FF85] hover:bg-[#00e677] text-[#040B0A] text-xs font-bold transition shrink-0"
+                  >
+                    Message
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!selectedUsers.some((s) => s.uid === matchedUser.uid)) {
+                        setSelectedUsers((prev) => [...prev, matchedUser]);
+                      }
+                      setMatchedUser(null);
+                      setUsernameQuery('');
+                    }}
+                    className="px-3.5 py-1.5 rounded-lg bg-[#00FF85] hover:bg-[#00e677] text-[#040B0A] text-xs font-bold transition shrink-0"
+                  >
+                    + Add
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Selected Group Members Chips */}
+            {isCreatingGroup && selectedUsers.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {selectedUsers.map((u) => (
+                  <span
+                    key={u.uid}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#00FF85]/15 border border-[#00FF85]/30 text-xs text-[#00FF85]"
+                  >
+                    {u.displayName || u.email}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedUsers((prev) => prev.filter((item) => item.uid !== u.uid))}
+                      className="hover:text-white"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Create Group Submit */}
             {isCreatingGroup && (
               <button
+                type="button"
                 onClick={createGroupChat}
                 disabled={!groupName.trim() || selectedUsers.length === 0}
                 className="w-full py-2.5 rounded-xl bg-[#00FF85] hover:bg-[#00e677] disabled:opacity-40 text-[#040B0A] text-sm font-bold transition"
