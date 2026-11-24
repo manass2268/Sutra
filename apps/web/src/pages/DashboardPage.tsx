@@ -299,7 +299,7 @@ export default function DashboardPage() {
   });
 
   return (
-    <div className="h-[calc(100vh-64px)] w-full bg-[#040B0A] text-gray-100 flex overflow-hidden font-sans relative">
+    <div className="h-full w-full bg-[#040B0A] text-gray-100 flex overflow-hidden font-sans relative">
       {/* 1. CHATS LIST SIDEBAR (Full width on mobile when no chat active, fixed width on md+) */}
       <section
         className={`w-full md:w-[320px] lg:w-[340px] bg-[#07110E] border-r border-white/10 flex-col shrink-0 ${
