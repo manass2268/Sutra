@@ -15,6 +15,8 @@ import {
   Search,
   Menu,
   X,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import Logo from '../../assets/SUTRA-favicon-64.png';
 
@@ -32,14 +34,6 @@ export default function DashboardLayout() {
   const handleLogout = async () => {
     await signOut(auth);
     navigate('/login');
-  };
-
-  const handleToggleSidebar = () => {
-    if (window.innerWidth < 768) {
-      setMobileOpen((prev) => !prev);
-    } else {
-      setIsPinned((prev) => !prev);
-    }
   };
 
   return (
@@ -88,6 +82,29 @@ export default function DashboardLayout() {
 
         {/* Navigation Links */}
         <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto overflow-x-hidden">
+          {/* Desktop Sidebar Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setIsPinned((prev) => !prev)}
+            title={isPinned ? 'Unpin Sidebar' : 'Pin Sidebar Open'}
+            className={`hidden md:flex w-full items-center gap-3 px-3 py-2.5 mb-2 rounded-xl transition-all border ${
+              !isExpanded ? 'justify-center' : ''
+            } ${
+              isPinned
+                ? 'bg-[#00FF85]/12 text-[#00FF85] border-[#00FF85]/25'
+                : 'text-gray-400 hover:bg-white/5 hover:text-white border-transparent'
+            }`}
+          >
+            <span className="shrink-0">
+              {isPinned ? <PanelLeftClose size={19} /> : <PanelLeftOpen size={19} />}
+            </span>
+            {isExpanded && (
+              <span className="font-medium text-sm whitespace-nowrap truncate">
+                {isPinned ? 'Collapse Menu' : 'Pin Menu'}
+              </span>
+            )}
+          </button>
+
           <NavItem
             icon={<LayoutDashboard size={19} />}
             label="Overview"
@@ -183,15 +200,10 @@ export default function DashboardLayout() {
         {/* Topbar */}
         <header className="h-16 flex items-center justify-between px-4 sm:px-6 bg-[#040B0A] border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3">
-            {/* Click Toggle Button (Desktop Pin + Mobile Drawer) */}
+            {/* Mobile Only Menu Button */}
             <button
-              onClick={handleToggleSidebar}
-              title={isPinned ? 'Collapse Sidebar' : 'Pin Sidebar Open'}
-              className={`p-2 rounded-xl transition-colors ${
-                isPinned
-                  ? 'bg-[#00FF85]/15 text-[#00FF85]'
-                  : 'text-gray-400 hover:bg-white/5 hover:text-white'
-              }`}
+              onClick={() => setMobileOpen(true)}
+              className="md:hidden p-2 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition-colors"
             >
               <Menu size={20} />
             </button>
@@ -228,7 +240,7 @@ export default function DashboardLayout() {
           </div>
         </header>
 
-        {/* Dynamic Page Content (No extra padding or double scrollbar) */}
+        {/* Dynamic Page Content */}
         <div className="flex-1 overflow-hidden">
           <Outlet />
         </div>
