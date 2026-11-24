@@ -1,9 +1,41 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import {collection,query,where,orderBy,onSnapshot,addDoc,serverTimestamp,doc,updateDoc,getDocs,increment,} from 'firebase/firestore';
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  addDoc,
+  serverTimestamp,
+  doc,
+  updateDoc,
+  getDocs,
+  increment,
+} from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import {MessageSquare,Users,Phone,Settings,Search,Plus,MoreVertical,Video,Paperclip,Smile,Send,UserPlus,Image as ImageIcon,Pin,FileText,ChevronRight,CheckCheck,X,ArrowLeft,Info,
+import {
+  MessageSquare,
+  Users,
+  Phone,
+  Settings,
+  Search,
+  Plus,
+  MoreVertical,
+  Video,
+  Paperclip,
+  Smile,
+  Send,
+  UserPlus,
+  Image as ImageIcon,
+  Pin,
+  FileText,
+  ChevronRight,
+  CheckCheck,
+  X,
+  ArrowLeft,
+  Info,
 } from 'lucide-react';
 
 interface AppUser {
@@ -35,6 +67,10 @@ interface Message {
   senderPhoto?: string;
   createdAt?: any;
 }
+
+// Custom dark slim scrollbar utility
+const slimScrollbar =
+  '[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20';
 
 export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
@@ -71,7 +107,7 @@ export default function DashboardPage() {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizingRef.current || !containerRef.current) return;
       const containerLeft = containerRef.current.getBoundingClientRect().left;
-      const newWidth = Math.min(Math.max(e.clientX - containerLeft, 260), 520);
+      const newWidth = Math.min(Math.max(e.clientX - containerLeft, 270), 500);
       setChatListWidth(newWidth);
     };
 
@@ -169,7 +205,7 @@ export default function DashboardPage() {
       })) as Message[];
       setMessages(msgList);
       markChatAsRead(activeChat.id);
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
     });
 
     return () => unsub();
@@ -320,6 +356,7 @@ export default function DashboardPage() {
     setShowNewChatModal(false);
   };
 
+  // Send Real-time Message + Increment Receiver Unread Count
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !activeChat || !currentUser) return;
@@ -391,7 +428,7 @@ export default function DashboardPage() {
       ref={containerRef}
       className="h-full w-full bg-[#040B0A] text-gray-100 flex overflow-hidden font-sans relative"
     >
-      {/* 1. RESIZABLE CHATS LIST SIDEBAR */}
+      {/* 1. WHATSAPP-STYLE RESIZABLE CHATS SIDEBAR */}
       <section
         style={{ width: typeof window !== 'undefined' && window.innerWidth >= 768 ? `${chatListWidth}px` : undefined }}
         className={`w-full md:w-auto bg-[#07110E] border-r border-white/10 flex-col shrink-0 relative ${
@@ -399,57 +436,51 @@ export default function DashboardPage() {
         }`}
       >
         {/* Header */}
-        <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+        <div className="px-4 pt-4 pb-2.5 flex items-center justify-between shrink-0">
           <h1 className="text-xl font-bold tracking-tight text-white">Chats</h1>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
               onClick={openNewChatModal}
               title="New Chat / Group"
-              className="p-2 rounded-xl bg-white/5 hover:bg-[#00FF85]/15 hover:text-[#00FF85] text-gray-300 transition border border-white/5"
+              className="p-2 rounded-full hover:bg-white/10 hover:text-[#00FF85] text-gray-300 transition"
             >
-              <Plus size={18} />
+              <Plus size={19} />
             </button>
-            <button className="p-2 rounded-xl hover:bg-white/5 text-gray-400 hover:text-white transition">
+            <button className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition">
               <MoreVertical size={18} />
             </button>
           </div>
         </div>
 
-        {/* Search */}
-        <div className="px-4 pb-3">
+        {/* Search Bar */}
+        <div className="px-3 pb-2.5 shrink-0">
           <div className="relative">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search chats, groups..."
-              className="w-full bg-[#0B1915] text-sm text-gray-200 placeholder-gray-500 pl-10 pr-4 py-2.5 rounded-xl border border-white/10 focus:outline-none focus:border-[#00FF85]/50 transition"
+              placeholder="Search or start a new chat"
+              className="w-full bg-[#0C1B17] text-[13px] text-gray-200 placeholder-gray-500 pl-10 pr-4 py-2 rounded-lg border border-white/5 focus:outline-none focus:border-[#00FF85]/40 transition"
             />
           </div>
         </div>
 
-        {/* Filter Pills */}
-        <div className="px-4 pb-3 flex items-center gap-2 overflow-x-auto no-scrollbar">
+        {/* Filter Pills (No ugly horizontal scrollbar) */}
+        <div className="px-3 pb-2.5 flex items-center gap-1.5 flex-wrap shrink-0 border-b border-white/5">
           {(['All', 'Unread', 'Groups', 'Pinned'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveFilter(tab)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition shrink-0 flex items-center gap-1.5 ${
+              className={`px-3 py-1 rounded-full text-xs font-medium transition flex items-center gap-1.5 ${
                 activeFilter === tab
-                  ? 'bg-[#00FF85] text-[#040B0A] shadow-md shadow-[#00FF85]/20'
-                  : 'bg-[#0B1915] text-gray-400 hover:text-white border border-white/5'
+                  ? 'bg-[#00FF85]/20 text-[#00FF85] border border-[#00FF85]/30'
+                  : 'bg-[#0C1B17] text-gray-400 hover:bg-white/10 hover:text-gray-200 border border-transparent'
               }`}
             >
               <span>{tab}</span>
               {tab === 'Unread' && totalUnreadChats > 0 && (
-                <span
-                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                    activeFilter === 'Unread'
-                      ? 'bg-[#040B0A] text-[#00FF85]'
-                      : 'bg-[#00FF85] text-[#040B0A]'
-                  }`}
-                >
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-[#00FF85] text-[#040B0A]">
                   {totalUnreadChats}
                 </span>
               )}
@@ -457,8 +488,8 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Chat Items */}
-        <div className="flex-1 overflow-y-auto px-2.5 pb-4 space-y-1">
+        {/* Chat List (WhatsApp Web Edge-to-Edge Rows) */}
+        <div className={`flex-1 overflow-y-auto ${slimScrollbar}`}>
           {filteredChats.length === 0 ? (
             <div className="text-center py-14 px-4">
               <p className="text-sm text-gray-500 mb-4">
@@ -467,7 +498,7 @@ export default function DashboardPage() {
               {activeFilter !== 'Unread' && (
                 <button
                   onClick={openNewChatModal}
-                  className="text-xs bg-[#00FF85] hover:bg-[#00e677] text-[#040B0A] px-4 py-2.5 rounded-xl font-bold transition shadow-lg shadow-[#00FF85]/15"
+                  className="text-xs bg-[#00FF85] hover:bg-[#00e677] text-[#040B0A] px-4 py-2 rounded-full font-bold transition"
                 >
                   + Start a New Chat
                 </button>
@@ -488,49 +519,52 @@ export default function DashboardPage() {
                     setActiveChat(chat);
                     if (unread > 0) markChatAsRead(chat.id);
                   }}
-                  className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition ${
+                  className={`flex items-center gap-3 px-3.5 py-3 cursor-pointer transition border-b border-white/[0.04] ${
                     isSelected
-                      ? 'bg-[#0E241C] border border-[#00FF85]/30'
-                      : unread > 0
-                      ? 'bg-[#0B1E17] hover:bg-[#0E241C] border border-[#00FF85]/15'
-                      : 'hover:bg-white/[0.04] border border-transparent'
+                      ? 'bg-[#0F241D]'
+                      : 'hover:bg-white/[0.04]'
                   }`}
                 >
+                  {/* Avatar */}
                   <div className="relative shrink-0">
                     {chat.isGroup ? (
-                      <div className="w-11 h-11 rounded-full bg-[#00FF85]/15 border border-[#00FF85]/30 flex items-center justify-center text-[#00FF85]">
+                      <div className="w-12 h-12 rounded-full bg-[#00FF85]/15 border border-[#00FF85]/25 flex items-center justify-center text-[#00FF85]">
                         <Users size={20} />
                       </div>
                     ) : avatar ? (
-                      <img src={avatar} alt={name} className="w-11 h-11 rounded-full object-cover border border-white/10" />
+                      <img src={avatar} alt={name} className="w-12 h-12 rounded-full object-cover" />
                     ) : (
-                      <div className="w-11 h-11 rounded-full bg-[#0F2E22] border border-[#00FF85]/20 text-[#00FF85] flex items-center justify-center font-bold">
+                      <div className="w-12 h-12 rounded-full bg-[#0F2E22] text-[#00FF85] flex items-center justify-center font-bold text-base">
                         {name.charAt(0).toUpperCase()}
                       </div>
                     )}
                     <span className="absolute bottom-0 right-0 w-3 h-3 bg-[#00FF85] border-2 border-[#07110E] rounded-full" />
                   </div>
 
+                  {/* Name, Time & Last Message */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-center mb-0.5">
-                      <h3 className={`text-sm truncate ${unread > 0 ? 'font-bold text-white' : 'font-semibold text-gray-100'}`}>
+                    <div className="flex justify-between items-baseline mb-0.5">
+                      <h3 className={`text-[15px] truncate ${unread > 0 ? 'font-bold text-white' : 'font-medium text-gray-100'}`}>
                         {name}
                       </h3>
-                      <span className={`text-[11px] shrink-0 ${unread > 0 ? 'text-[#00FF85] font-semibold' : 'text-gray-500'}`}>
+                      <span className={`text-[11px] shrink-0 ml-2 ${unread > 0 ? 'text-[#00FF85] font-semibold' : 'text-gray-500'}`}>
                         {formatTime(chat.updatedAt)}
                       </span>
                     </div>
                     <div className="flex justify-between items-center gap-2">
-                      <p className={`text-xs truncate ${unread > 0 ? 'text-gray-100 font-medium' : 'text-gray-400'}`}>
-                        {chat.lastMessage || 'Say hi!'}
-                      </p>
-                      {unread > 0 ? (
-                        <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#00FF85] text-[#040B0A] text-[11px] font-bold flex items-center justify-center shrink-0 shadow-sm shadow-[#00FF85]/30">
+                      <div className="flex items-center gap-1 min-w-0">
+                        {isLastFromMe && unread === 0 && (
+                          <CheckCheck size={14} className="text-[#00FF85] shrink-0" />
+                        )}
+                        <p className={`text-[13px] truncate ${unread > 0 ? 'text-gray-100 font-medium' : 'text-gray-400'}`}>
+                          {chat.lastMessage || 'Say hi!'}
+                        </p>
+                      </div>
+                      {unread > 0 && (
+                        <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#00FF85] text-[#040B0A] text-[11px] font-bold flex items-center justify-center shrink-0">
                           {unread > 99 ? '99+' : unread}
                         </span>
-                      ) : isLastFromMe ? (
-                        <CheckCheck size={14} className="text-[#00FF85] shrink-0" />
-                      ) : null}
+                      )}
                     </div>
                   </div>
                 </div>
@@ -539,69 +573,75 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Drag Resize Handle (Desktop Only) */}
+        {/* Drag Resize Handle */}
         <div
           onMouseDown={startResizing}
           title="Drag to resize"
-          className="hidden md:block absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-[#00FF85]/40 active:bg-[#00FF85]/70 transition-colors z-20"
+          className="hidden md:block absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-[#00FF85]/50 active:bg-[#00FF85] transition-colors z-20"
         />
       </section>
 
-      {/* 2. MAIN CHAT WINDOW */}
+      {/* 2. WHATSAPP WEB STYLE CHAT WINDOW */}
       <main
-        className={`flex-1 flex-col bg-[#040B0A] relative min-w-0 ${
+        className={`flex-1 flex-col bg-[#050C0A] relative min-w-0 ${
           activeChat ? 'flex' : 'hidden md:flex'
         }`}
       >
         {activeChat ? (
           <>
             {/* Chat Header */}
-            <header className="h-[68px] px-4 sm:px-6 border-b border-white/10 bg-[#07110E]/90 backdrop-blur-md flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
+            <header className="h-[60px] px-4 border-b border-white/10 bg-[#07110E] flex items-center justify-between shrink-0 z-10">
+              <div
+                onClick={() => setShowRightPanel(!showRightPanel)}
+                className="flex items-center gap-3 min-w-0 cursor-pointer"
+              >
                 <button
-                  onClick={() => setActiveChat(null)}
-                  className="md:hidden p-2 -ml-1 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveChat(null);
+                  }}
+                  className="md:hidden p-1.5 -ml-1 rounded-full text-gray-400 hover:bg-white/10 hover:text-white transition"
                 >
                   <ArrowLeft size={20} />
                 </button>
 
                 {activeChat.isGroup ? (
-                  <div className="w-10 h-10 rounded-full bg-[#00FF85]/15 border border-[#00FF85]/30 flex items-center justify-center text-[#00FF85] shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-[#00FF85]/15 flex items-center justify-center text-[#00FF85] shrink-0">
                     <Users size={18} />
                   </div>
                 ) : getChatAvatar(activeChat) ? (
                   <img src={getChatAvatar(activeChat)!} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-[#0F2E22] border border-[#00FF85]/20 text-[#00FF85] flex items-center justify-center font-bold shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-[#0F2E22] text-[#00FF85] flex items-center justify-center font-bold shrink-0">
                     {getChatName(activeChat).charAt(0).toUpperCase()}
                   </div>
                 )}
 
                 <div className="min-w-0">
-                  <h2 className="text-sm sm:text-base font-bold text-white leading-tight truncate">
+                  <h2 className="text-[15px] font-semibold text-white leading-tight truncate">
                     {getChatName(activeChat)}
                   </h2>
-                  <p className="text-xs text-[#00FF85]/80">
-                    {activeChat.isGroup ? `${activeChat.participants.length} members` : 'Online'}
+                  <p className="text-[12px] text-[#00FF85]/80 leading-tight mt-0.5">
+                    {activeChat.isGroup ? `${activeChat.participants.length} members` : 'online'}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1 sm:gap-2 text-gray-400">
-                <button className="hidden sm:flex p-2.5 rounded-xl hover:bg-white/5 hover:text-white transition">
+              <div className="flex items-center gap-1 text-gray-400">
+                <button className="hidden sm:flex p-2 rounded-full hover:bg-white/10 hover:text-white transition">
                   <Video size={18} />
                 </button>
-                <button className="hidden sm:flex p-2.5 rounded-xl hover:bg-white/5 hover:text-white transition">
-                  <Phone size={18} />
+                <button className="hidden sm:flex p-2 rounded-full hover:bg-white/10 hover:text-white transition">
+                  <Phone size={17} />
                 </button>
-                <button className="p-2.5 rounded-xl hover:bg-white/5 hover:text-white transition">
-                  <Search size={18} />
+                <button className="p-2 rounded-full hover:bg-white/10 hover:text-white transition">
+                  <Search size={17} />
                 </button>
                 <button
                   onClick={() => setShowRightPanel(!showRightPanel)}
                   title="Chat Info"
-                  className={`p-2.5 rounded-xl transition ${
-                    showRightPanel ? 'bg-[#00FF85]/15 text-[#00FF85]' : 'hover:bg-white/5 hover:text-white'
+                  className={`p-2 rounded-full transition ${
+                    showRightPanel ? 'bg-[#00FF85]/15 text-[#00FF85]' : 'hover:bg-white/10 hover:text-white'
                   }`}
                 >
                   <Info size={18} />
@@ -609,38 +649,57 @@ export default function DashboardPage() {
               </div>
             </header>
 
-            {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-4">
-              <div className="flex justify-center">
-                <span className="px-3.5 py-1 rounded-full bg-[#0B1915] text-[11px] text-gray-400 border border-white/10">
+            {/* Messages Area (Subtle WhatsApp Dark Pattern + Compact Grouped Bubbles) */}
+            <div
+              style={{
+                backgroundImage:
+                  'radial-gradient(rgba(0, 255, 133, 0.04) 1px, transparent 1px)',
+                backgroundSize: '22px 22px',
+              }}
+              className={`flex-1 overflow-y-auto px-4 sm:px-8 lg:px-14 py-4 flex flex-col ${slimScrollbar}`}
+            >
+              <div className="flex justify-center mb-4">
+                <span className="px-3 py-1 rounded-lg bg-[#0B1915] text-[11px] font-medium text-gray-400 border border-white/5 shadow-sm">
                   Today
                 </span>
               </div>
 
-              {messages.map((msg) => {
+              {messages.map((msg, idx) => {
                 const isMe = msg.senderId === currentUser?.uid;
-                return (
-                  <div key={msg.id} className={`flex items-end gap-2.5 ${isMe ? 'justify-end' : 'justify-start'}`}>
-                    {!isMe && (
-                      <div className="w-8 h-8 rounded-full bg-[#0F2E22] border border-[#00FF85]/20 text-[#00FF85] flex items-center justify-center text-xs font-bold shrink-0">
-                        {msg.senderName?.charAt(0).toUpperCase() || 'U'}
-                      </div>
-                    )}
+                const prevMsg = idx > 0 ? messages[idx - 1] : null;
+                const isSameSenderAsPrev = prevMsg?.senderId === msg.senderId;
 
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${
+                      isSameSenderAsPrev ? 'mt-1' : 'mt-3'
+                    }`}
+                  >
                     <div
-                      className={`max-w-[80%] sm:max-w-[68%] rounded-2xl px-4 py-2.5 shadow-md ${
+                      className={`relative max-w-[82%] sm:max-w-[65%] px-3 py-1.5 shadow-sm ${
                         isMe
-                          ? 'bg-[#0E2E21] border border-[#00FF85]/35 text-white rounded-br-sm'
-                          : 'bg-[#0B1613] border border-white/10 text-gray-100 rounded-bl-sm'
+                          ? `bg-[#0B3B2A] text-gray-100 rounded-lg ${!isSameSenderAsPrev ? 'rounded-tr-none' : ''}`
+                          : `bg-[#101F1B] text-gray-100 rounded-lg border border-white/[0.04] ${!isSameSenderAsPrev ? 'rounded-tl-none' : ''}`
                       }`}
                     >
-                      {!isMe && activeChat.isGroup && (
-                        <p className="text-xs font-semibold text-[#00FF85] mb-1">{msg.senderName}</p>
+                      {!isMe && activeChat.isGroup && !isSameSenderAsPrev && (
+                        <p className="text-[11px] font-semibold text-[#00FF85] mb-0.5">{msg.senderName}</p>
                       )}
-                      <p className="text-sm leading-relaxed break-words">{msg.text}</p>
-                      <div className={`flex items-center justify-end gap-1 mt-1 text-[10px] ${isMe ? 'text-[#00FF85]/70' : 'text-gray-500'}`}>
-                        <span>{formatTime(msg.createdAt)}</span>
-                        {isMe && <CheckCheck size={13} className="text-[#00FF85]" />}
+
+                      {/* Inline Text + Timestamp (WhatsApp Web style) */}
+                      <div className="flex flex-wrap items-end gap-x-2.5">
+                        <span className="text-[14px] leading-[1.35] break-words whitespace-pre-wrap">
+                          {msg.text}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 text-[10px] ml-auto pt-1 shrink-0 select-none ${
+                            isMe ? 'text-[#86efac]/75' : 'text-gray-400/80'
+                          }`}
+                        >
+                          {formatTime(msg.createdAt)}
+                          {isMe && <CheckCheck size={13} className="text-[#00FF85]" />}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -649,44 +708,46 @@ export default function DashboardPage() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Message Input Bar */}
-            <form onSubmit={handleSendMessage} className="p-3 sm:p-4 bg-[#07110E] border-t border-white/10">
-              <div className="flex items-center gap-2 sm:gap-3 bg-[#0B1915] rounded-2xl px-3 sm:px-4 py-2 border border-white/10 focus-within:border-[#00FF85]/50 transition">
-                <button type="button" className="text-gray-400 hover:text-[#00FF85] transition">
-                  <Paperclip size={18} />
+            {/* WhatsApp Web Style Input Footer */}
+            <form onSubmit={handleSendMessage} className="px-3 sm:px-4 py-2.5 bg-[#07110E] border-t border-white/10 shrink-0">
+              <div className="flex items-center gap-2">
+                <button type="button" className="p-2 rounded-full text-gray-400 hover:bg-white/5 hover:text-[#00FF85] transition">
+                  <Smile size={20} />
                 </button>
+                <button type="button" className="p-2 rounded-full text-gray-400 hover:bg-white/5 hover:text-[#00FF85] transition">
+                  <Paperclip size={19} />
+                </button>
+
                 <input
                   type="text"
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Type a message..."
-                  className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none py-1.5 min-w-0"
+                  placeholder="Type a message"
+                  className="flex-1 bg-[#0C1B17] text-sm text-white placeholder-gray-500 px-4 py-2.5 rounded-lg border border-white/5 focus:outline-none focus:border-[#00FF85]/40 transition min-w-0"
                 />
-                <button type="button" className="hidden sm:block text-gray-400 hover:text-[#00FF85] transition">
-                  <Smile size={18} />
-                </button>
+
                 <button
                   type="submit"
-                  className="w-9 h-9 rounded-xl bg-[#00FF85] hover:bg-[#00e677] text-[#040B0A] flex items-center justify-center transition shadow-lg shadow-[#00FF85]/20 shrink-0"
+                  disabled={!newMessage.trim()}
+                  className="p-2.5 rounded-full bg-[#00FF85] hover:bg-[#00e677] disabled:opacity-40 text-[#040B0A] flex items-center justify-center transition shrink-0"
                 >
-                  <Send size={16} />
+                  <Send size={17} />
                 </button>
               </div>
             </form>
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center px-6 relative overflow-hidden">
-            <div className="absolute w-72 h-72 bg-[#00FF85]/5 rounded-full blur-[120px] pointer-events-none" />
-            <div className="w-16 h-16 rounded-2xl bg-[#00FF85]/10 border border-[#00FF85]/25 flex items-center justify-center mb-4">
+            <div className="w-16 h-16 rounded-2xl bg-[#00FF85]/10 border border-[#00FF85]/20 flex items-center justify-center mb-4">
               <MessageSquare size={30} className="text-[#00FF85]" />
             </div>
-            <h2 className="text-xl font-bold text-white mb-1.5">Welcome to Sutraa</h2>
+            <h2 className="text-xl font-bold text-white mb-1.5">Sutraa Web</h2>
             <p className="text-sm text-gray-400 max-w-sm mb-6">
-              Select a conversation from the left or start a new real-time chat with your team.
+              Send and receive real-time private messages seamlessly. Select a chat or start a new one.
             </p>
             <button
               onClick={openNewChatModal}
-              className="px-5 py-2.5 rounded-xl bg-[#00FF85] hover:bg-[#00e677] text-[#040B0A] text-sm font-bold transition shadow-lg shadow-[#00FF85]/20"
+              className="px-5 py-2.5 rounded-full bg-[#00FF85] hover:bg-[#00e677] text-[#040B0A] text-sm font-bold transition"
             >
               + New Conversation
             </button>
@@ -701,24 +762,27 @@ export default function DashboardPage() {
             onClick={() => setShowRightPanel(false)}
             className="fixed inset-0 bg-black/60 z-30 xl:hidden"
           />
-          <aside className="fixed xl:static inset-y-0 right-0 z-40 w-[290px] bg-[#07110E] border-l border-white/10 flex flex-col overflow-y-auto shrink-0 shadow-2xl xl:shadow-none">
-            <div className="flex justify-end p-3 xl:hidden">
+          <aside className={`fixed xl:static inset-y-0 right-0 z-40 w-[290px] bg-[#07110E] border-l border-white/10 flex flex-col overflow-y-auto shrink-0 shadow-2xl xl:shadow-none ${slimScrollbar}`}>
+            <div className="h-[60px] px-4 border-b border-white/10 flex items-center justify-between shrink-0">
+              <span className="text-sm font-semibold text-gray-200">
+                {activeChat.isGroup ? 'Group info' : 'Contact info'}
+              </span>
               <button
                 onClick={() => setShowRightPanel(false)}
-                className="p-1.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white"
+                className="p-1.5 rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
               >
                 <X size={18} />
               </button>
             </div>
 
             {/* Profile Summary */}
-            <div className="px-6 pb-6 xl:pt-6 flex flex-col items-center text-center border-b border-white/10">
+            <div className="px-6 py-6 flex flex-col items-center text-center border-b border-white/10">
               {activeChat.isGroup ? (
-                <div className="w-18 h-18 p-5 rounded-full bg-[#00FF85]/15 border border-[#00FF85]/30 flex items-center justify-center text-[#00FF85] mb-3">
-                  <Users size={30} />
+                <div className="w-20 h-20 rounded-full bg-[#00FF85]/15 border border-[#00FF85]/30 flex items-center justify-center text-[#00FF85] mb-3">
+                  <Users size={32} />
                 </div>
               ) : getChatAvatar(activeChat) ? (
-                <img src={getChatAvatar(activeChat)!} alt="" className="w-20 h-20 rounded-full object-cover mb-3 border border-white/10" />
+                <img src={getChatAvatar(activeChat)!} alt="" className="w-20 h-20 rounded-full object-cover mb-3" />
               ) : (
                 <div className="w-20 h-20 rounded-full bg-[#0F2E22] border border-[#00FF85]/30 text-[#00FF85] flex items-center justify-center text-2xl font-bold mb-3">
                   {getChatName(activeChat).charAt(0).toUpperCase()}
@@ -726,10 +790,9 @@ export default function DashboardPage() {
               )}
               <h3 className="text-base font-bold text-white">{getChatName(activeChat)}</h3>
               <p className="text-xs text-[#00FF85]/80 mt-0.5">
-                {activeChat.isGroup ? `${activeChat.participants.length} members` : 'Active now'}
+                {activeChat.isGroup ? `${activeChat.participants.length} members` : 'Online'}
               </p>
 
-              {/* Quick Actions */}
               <div className="grid grid-cols-4 gap-2 w-full mt-5">
                 {[
                   { icon: UserPlus, label: 'Add' },
@@ -739,7 +802,7 @@ export default function DashboardPage() {
                 ].map((item) => (
                   <button
                     key={item.label}
-                    className="flex flex-col items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#0B1915] hover:bg-[#00FF85]/10 hover:text-[#00FF85] border border-white/5 transition text-gray-300"
+                    className="flex flex-col items-center justify-center gap-1 py-2 rounded-xl bg-[#0C1B17] hover:bg-[#00FF85]/10 hover:text-[#00FF85] transition text-gray-300"
                   >
                     <item.icon size={16} />
                     <span className="text-[10px] text-gray-400">{item.label}</span>
@@ -749,7 +812,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Info Links */}
-            <div className="p-4 space-y-1 border-b border-white/10">
+            <div className="p-3 space-y-1 border-b border-white/10">
               {[
                 { icon: ImageIcon, label: 'Media, files & links', count: '0' },
                 { icon: Pin, label: 'Pinned messages', count: '0' },
@@ -758,7 +821,7 @@ export default function DashboardPage() {
               ].map((row) => (
                 <button
                   key={row.label}
-                  className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-white/5 transition text-sm text-gray-300"
+                  className="w-full flex items-center justify-between p-2.5 rounded-lg hover:bg-white/5 transition text-sm text-gray-300"
                 >
                   <div className="flex items-center gap-3">
                     <row.icon size={16} className="text-[#00FF85]/80" />
@@ -789,7 +852,7 @@ export default function DashboardPage() {
                   return (
                     <div key={uid} className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-full bg-[#0F2E22] border border-[#00FF85]/20 text-[#00FF85] flex items-center justify-center text-xs font-bold shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-[#0F2E22] text-[#00FF85] flex items-center justify-center text-xs font-bold shrink-0">
                           {(detail?.displayName || 'U').charAt(0).toUpperCase()}
                         </div>
                         <span className="text-sm text-gray-200 truncate">
@@ -821,7 +884,6 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            {/* Mode Switch */}
             <div className="flex gap-2 mb-4">
               <button
                 type="button"
@@ -851,7 +913,6 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            {/* Group Name Input */}
             {isCreatingGroup && (
               <input
                 type="text"
@@ -862,7 +923,6 @@ export default function DashboardPage() {
               />
             )}
 
-            {/* Exact Username Search Form */}
             <form onSubmit={handleSearchUser} className="flex gap-2 mb-4">
               <input
                 type="text"
@@ -880,14 +940,12 @@ export default function DashboardPage() {
               </button>
             </form>
 
-            {/* Error Message */}
             {searchError && (
               <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
                 {searchError}
               </p>
             )}
 
-            {/* Matched User Card */}
             {matchedUser && (
               <div className="flex items-center justify-between p-3 rounded-xl bg-[#0E241C] border border-[#00FF85]/35 mb-4">
                 <div className="flex items-center gap-3 min-w-0">
@@ -928,7 +986,6 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Selected Group Members Chips */}
             {isCreatingGroup && selectedUsers.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-4">
                 {selectedUsers.map((u) => (
@@ -949,7 +1006,6 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Create Group Submit */}
             {isCreatingGroup && (
               <button
                 type="button"
