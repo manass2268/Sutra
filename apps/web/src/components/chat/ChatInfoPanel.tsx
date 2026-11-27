@@ -53,7 +53,10 @@ export default function ChatInfoPanel({
           <span className="text-sm font-semibold text-gray-200">
             {activeChat.isGroup ? 'Group info' : 'Contact info'}
           </span>
-          <button onClick={onClose} className="p-1.5 rounded-full text-gray-400 hover:bg-white/10 hover:text-white">
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
+          >
             <X size={18} />
           </button>
         </div>
@@ -65,25 +68,29 @@ export default function ChatInfoPanel({
               <Users size={32} />
             </div>
           ) : getChatAvatar() ? (
-            <img src={getChatAvatar()!} alt="" className="w-20 h-20 rounded-full object-cover mb-3" />
+            <img
+              src={getChatAvatar()!}
+              alt=""
+              className="w-20 h-20 rounded-full object-cover mb-3"
+            />
           ) : (
             <div className="w-20 h-20 rounded-full bg-[#0F2E22] border border-[#00FF85]/30 text-[#00FF85] flex items-center justify-center text-2xl font-bold mb-3">
               {getChatName().charAt(0).toUpperCase()}
             </div>
           )}
+
           <h3 className="text-base font-bold text-white">{getChatName()}</h3>
           <p
-            className={`text-xs mt-0.5 ${
-              activeChat.isGroup
+            className={`text-xs mt-0.5 ${activeChat.isGroup
                 ? 'text-gray-400'
                 : otherPresence?.isOnline
-                ? 'text-[#00FF85] font-medium'
-                : 'text-gray-400'
-            }`}
+                  ? 'text-[#00FF85] font-medium'
+                  : 'text-gray-400'
+              }`}
           >
             {activeChat.isGroup
               ? `${activeChat.participants.length} members`
-              : otherPresence?.statusText || 'offline'}
+              : otherPresence?.statusText || 'last seen recently'}
           </p>
 
           <div className="grid grid-cols-4 gap-2 w-full mt-5">
@@ -110,7 +117,11 @@ export default function ChatInfoPanel({
             { icon: ImageIcon, label: 'Media, files & links', count: '0' },
             { icon: Pin, label: 'Pinned messages', count: '0' },
             { icon: FileText, label: 'Shared documents', count: '0' },
-            { icon: Settings, label: activeChat.isGroup ? 'Group settings' : 'Chat settings', count: '' },
+            {
+              icon: Settings,
+              label: activeChat.isGroup ? 'Group settings' : 'Chat settings',
+              count: '',
+            },
           ].map((row) => (
             <button
               key={row.label}
@@ -164,7 +175,10 @@ export default function ChatInfoPanel({
                       )}
                     </div>
                   </div>
-                  <span className={`text-[11px] shrink-0 ${isAdmin ? 'text-[#00FF85] font-medium' : 'text-gray-500'}`}>
+                  <span
+                    className={`text-[11px] shrink-0 ${isAdmin ? 'text-[#00FF85] font-medium' : 'text-gray-500'
+                      }`}
+                  >
                     {isAdmin ? 'Admin' : 'Member'}
                   </span>
                 </div>

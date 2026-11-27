@@ -28,7 +28,6 @@ export function useTrackMyPresence(uid?: string) {
       ).catch(() => {});
     };
 
-    // Initial online mark
     markOnline();
 
     const interval = setInterval(markOnline, 25000);
@@ -53,17 +52,20 @@ export function useTrackMyPresence(uid?: string) {
   }, [uid]);
 }
 
+// Helper: Timestamp ko WhatsApp style "last seen ..." format mein convert karne ke liye
 function formatLastSeen(lastSeen: any): string {
-  if (!lastSeen) return 'offline';
+  if (!lastSeen) return 'last seen recently';
 
   const millis =
     typeof lastSeen.toMillis === 'function'
       ? lastSeen.toMillis()
       : lastSeen.seconds
       ? lastSeen.seconds * 1000
+      : typeof lastSeen === 'number'
+      ? lastSeen
       : null;
 
-  if (!millis) return 'offline';
+  if (!millis) return 'last seen recently';
 
   const date = new Date(millis);
   const now = new Date();
@@ -89,10 +91,13 @@ function formatLastSeen(lastSeen: any): string {
   return `last seen ${dateStr} at ${timeStr}`;
 }
 
-// 2. Baaki users ka real-time online/lastSeen status show hone ke liye
-export function useUsersPresence(userIds: string[]): Record<string, UserPresenceInfo> {
+// 2. Baaki users ka real-time online / lastSeen status sunne ke liye (with fallback timestamp)
+export function useUsersPresence(
+  userIds: string[],
+  fallbackTimestamps?: Record<string, any>
+): Record<string, UserPresenceInfo> {
   const [rawUsers, setRawUsers] = useState<
-    Record<string, { isOnline?: boolean; lastSeen?: any }>
+    Record<string, { isOnline?: boolean; lastSeen?: any; createdAt?: any }>
   >({});
   const [tick, setTick] = useState(0);
 
@@ -111,6 +116,7 @@ export function useUsersPresence(userIds: string[]): Record<string, UserPresence
             [uid]: {
               isOnline: data.isOnline,
               lastSeen: data.lastSeen,
+              createdAt: data.createdAt,
             },
           }));
         }
@@ -120,7 +126,6 @@ export function useUsersPresence(userIds: string[]): Record<string, UserPresence
     return () => unsubs.forEach((unsub) => unsub());
   }, [idsKey]);
 
-  // Har 15 second mein check karo ki kisi ka heartbeat 50s se purana toh nahi ho gaya
   useEffect(() => {
     const timer = setInterval(() => setTick((t) => t + 1), 15000);
     return () => clearInterval(timer);
@@ -130,22 +135,28 @@ export function useUsersPresence(userIds: string[]): Record<string, UserPresence
 
   const presenceMap: Record<string, UserPresenceInfo> = {};
   const now = Date.now();
+  const uniqueIds = idsKey ? idsKey.split(',') : [];
 
-  Object.entries(rawUsers).forEach(([uid, info]) => {
+  uniqueIds.forEach((uid) => {
+    const info = rawUsers[uid];
+
     const lastSeenMillis =
-      typeof info.lastSeen?.toMillis === 'function'
+      typeof info?.lastSeen?.toMillis === 'function'
         ? info.lastSeen.toMillis()
-        : info.lastSeen?.seconds
+        : info?.lastSeen?.seconds
         ? info.lastSeen.seconds * 1000
         : 0;
 
-    // 50 seconds ke andar heartbeat aayi hai aur isOnline true hai toh genuinely online hai
     const genuinelyOnline =
-      Boolean(info.isOnline) && (lastSeenMillis === 0 || now - lastSeenMillis < 50000);
+      Boolean(info?.isOnline) && (lastSeenMillis === 0 || now - lastSeenMillis < 50000);
+
+    // Agar user ka lastSeen abhi tak set nahi hai toh chat activity ya createdAt se last seen dikhao
+    const effectiveLastSeen =
+      info?.lastSeen || fallbackTimestamps?.[uid] || info?.createdAt;
 
     presenceMap[uid] = {
       isOnline: genuinelyOnline,
-      statusText: genuinelyOnline ? 'online' : formatLastSeen(info.lastSeen),
+      statusText: genuinelyOnline ? 'online' : formatLastSeen(effectiveLastSeen),
     };
   });
 

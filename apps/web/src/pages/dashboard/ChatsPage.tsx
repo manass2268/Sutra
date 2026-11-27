@@ -37,18 +37,31 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
 
   const activeChat = chats.find((c) => c.id === activeChatId) || null;
 
-  // Collect all unique participant UIDs across chats for live presence tracking
-  const allOtherUserIds = useMemo(() => {
+  // Sabhi users ki UIDs aur unke chat timestamps collect karo (fallback last seen ke liye)
+  const { allOtherUserIds, fallbackTimestamps } = useMemo(() => {
     const ids = new Set<string>();
+    const fallbacks: Record<string, any> = {};
+
     chats.forEach((c) => {
       c.participants.forEach((uid) => {
-        if (uid !== currentUser?.uid) ids.add(uid);
+        if (uid !== currentUser?.uid) {
+          ids.add(uid);
+          if (!c.isGroup && c.updatedAt) {
+            if (!fallbacks[uid] || c.lastSenderId === uid) {
+              fallbacks[uid] = c.updatedAt;
+            }
+          }
+        }
       });
     });
-    return Array.from(ids);
+
+    return {
+      allOtherUserIds: Array.from(ids),
+      fallbackTimestamps: fallbacks,
+    };
   }, [chats, currentUser?.uid]);
 
-  const presenceMap = useUsersPresence(allOtherUserIds);
+  const presenceMap = useUsersPresence(allOtherUserIds, fallbackTimestamps);
 
   const markChatAsRead = async (chatId: string) => {
     if (!currentUser) return;

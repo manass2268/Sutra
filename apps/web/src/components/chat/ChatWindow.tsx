@@ -94,7 +94,7 @@ export default function ChatWindow({
 
     return (
       <p className="text-[12px] text-gray-400 leading-tight mt-0.5 truncate">
-        {presence?.statusText || 'offline'}
+        {presence?.statusText || 'last seen recently'}
       </p>
     );
   };
