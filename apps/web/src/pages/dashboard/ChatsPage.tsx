@@ -12,6 +12,7 @@ import {
   updateDoc,
   increment,
   getDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -26,12 +27,15 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
   const location = useLocation();
 
   const [chats, setChats] = useState<ChatRoom[]>([]);
-  const [activeChat, setActiveChat] = useState<ChatRoom | null>(null);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [showRightPanel, setShowRightPanel] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1280 : false
   );
+
+  // Live activeChat object so tick status updates in real time
+  const activeChat = chats.find((c) => c.id === activeChatId) || null;
 
   const markChatAsRead = async (chatId: string) => {
     if (!currentUser) return;
@@ -44,7 +48,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     }
   };
 
-  // Real-time Chats Listener
+  // 1. Real-time Chats Listener + Auto Mark 'delivered' when receiver comes online
   useEffect(() => {
     if (!currentUser) return;
 
@@ -54,36 +58,47 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
-      const chatList: ChatRoom[] = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      })) as ChatRoom[];
+      const chatList: ChatRoom[] = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data() as Omit<ChatRoom, 'id'>;
+
+        
+        if (
+          data.lastSenderId &&
+          data.lastSenderId !== currentUser.uid &&
+          data.lastMessageStatus === 'sent'
+        ) {
+          updateDoc(doc(db, 'chats', docSnap.id), {
+            lastMessageStatus: 'delivered',
+          }).catch(() => {});
+        }
+
+        return {
+          id: docSnap.id,
+          ...data,
+        };
+      });
 
       chatList.sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
       setChats(chatList);
 
-      // Handle navigation state from Overview / Contacts
       const stateChatId = (location.state as any)?.openChatId;
-      if (stateChatId) {
-        const found = chatList.find((c) => c.id === stateChatId);
-        if (found) setActiveChat(found);
+      if (stateChatId && chatList.some((c) => c.id === stateChatId)) {
+        setActiveChatId(stateChatId);
       }
     });
 
     return () => unsub();
   }, [currentUser, location.state]);
 
-  // Real-time Messages Listener
+  // 2. Real-time Messages Listener + Auto Mark 'read' (Double Blue Tick) when chat is open
   useEffect(() => {
-    if (!activeChat) {
+    if (!activeChatId || !currentUser) {
       setMessages([]);
       return;
     }
 
-    markChatAsRead(activeChat.id);
-
     const q = query(
-      collection(db, 'chats', activeChat.id, 'messages'),
+      collection(db, 'chats', activeChatId, 'messages'),
       orderBy('createdAt', 'asc')
     );
 
@@ -93,18 +108,38 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
         ...docSnap.data(),
       })) as Message[];
       setMessages(msgList);
-      markChatAsRead(activeChat.id);
+
+      // Samne wale ke unread messages ko 'read' mark karo
+      const unreadDocs = snapshot.docs.filter((docSnap) => {
+        const m = docSnap.data() as Message;
+        return m.senderId !== currentUser.uid && m.status !== 'read';
+      });
+
+      if (unreadDocs.length > 0) {
+        const batch = writeBatch(db);
+        unreadDocs.forEach((docSnap) => {
+          batch.update(docSnap.ref, { status: 'read' });
+        });
+        batch.update(doc(db, 'chats', activeChatId), {
+          lastMessageStatus: 'read',
+          [`unreadCounts.${currentUser.uid}`]: 0,
+        });
+        batch.commit().catch(() => {});
+      } else {
+        markChatAsRead(activeChatId);
+      }
     });
 
     return () => unsub();
-  }, [activeChat?.id, currentUser?.uid]);
+  }, [activeChatId, currentUser?.uid]);
 
+  // Start 1-on-1 Chat
   const handleStartDirectChat = async (targetUser: AppUser) => {
     if (!currentUser) return;
 
     const existing = chats.find((c) => !c.isGroup && c.participants.includes(targetUser.uid));
     if (existing) {
-      setActiveChat(existing);
+      setActiveChatId(existing.id);
       setShowNewChatModal(false);
       return;
     }
@@ -131,23 +166,17 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
       },
       lastMessage: 'Started a conversation',
       lastSenderId: currentUser.uid,
+      lastMessageStatus: 'sent',
       unreadCounts: { [currentUser.uid]: 0, [targetUser.uid]: 0 },
       updatedAt: serverTimestamp(),
       createdBy: currentUser.uid,
     });
 
-    setActiveChat({
-      id: newChatRef.id,
-      isGroup: false,
-      participants: [currentUser.uid, targetUser.uid],
-      participantDetails: {
-        [currentUser.uid]: { displayName: currentUser.displayName || 'You', username: myUsername },
-        [targetUser.uid]: { displayName: targetUser.displayName, username: targetUser.username },
-      },
-    });
+    setActiveChatId(newChatRef.id);
     setShowNewChatModal(false);
   };
 
+  // Create Group Chat
   const handleCreateGroup = async (groupName: string, selectedUsers: AppUser[]) => {
     if (!currentUser || !groupName.trim() || selectedUsers.length === 0) return;
 
@@ -182,36 +211,33 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
       participantDetails,
       lastMessage: `${currentUser.displayName || 'Admin'} created group`,
       lastSenderId: currentUser.uid,
+      lastMessageStatus: 'sent',
       unreadCounts,
       updatedAt: serverTimestamp(),
       createdBy: currentUser.uid,
     });
 
-    setActiveChat({
-      id: newGroupRef.id,
-      name: groupName.trim(),
-      isGroup: true,
-      participants: participantIds,
-      participantDetails,
-      createdBy: currentUser.uid,
-    });
+    setActiveChatId(newGroupRef.id);
     setShowNewChatModal(false);
   };
 
+  // Send Message with initial 'sent' status (Single Tick)
   const handleSendMessage = async (textToSend: string) => {
-    if (!activeChat || !currentUser) return;
+    if (!activeChatId || !activeChat || !currentUser) return;
 
-    await addDoc(collection(db, 'chats', activeChat.id, 'messages'), {
+    await addDoc(collection(db, 'chats', activeChatId, 'messages'), {
       text: textToSend,
       senderId: currentUser.uid,
       senderName: currentUser.displayName || 'User',
       senderPhoto: currentUser.photoURL || '',
+      status: 'sent',
       createdAt: serverTimestamp(),
     });
 
     const updatePayload: Record<string, any> = {
       lastMessage: textToSend,
       lastSenderId: currentUser.uid,
+      lastMessageStatus: 'sent',
       updatedAt: serverTimestamp(),
       [`unreadCounts.${currentUser.uid}`]: 0,
     };
@@ -222,7 +248,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
       }
     });
 
-    await updateDoc(doc(db, 'chats', activeChat.id), updatePayload);
+    await updateDoc(doc(db, 'chats', activeChatId), updatePayload);
   };
 
   return (
@@ -233,7 +259,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
         currentUserId={currentUser?.uid}
         defaultFilter={defaultFilter}
         onSelectChat={(chat) => {
-          setActiveChat(chat);
+          setActiveChatId(chat.id);
           markChatAsRead(chat.id);
         }}
         onOpenNewChat={() => setShowNewChatModal(true)}
@@ -245,7 +271,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
         currentUserId={currentUser?.uid}
         showRightPanel={showRightPanel}
         onToggleRightPanel={() => setShowRightPanel((prev) => !prev)}
-        onBack={() => setActiveChat(null)}
+        onBack={() => setActiveChatId(null)}
         onSendMessage={handleSendMessage}
         onOpenNewChat={() => setShowNewChatModal(true)}
       />

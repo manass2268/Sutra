@@ -1,3 +1,5 @@
+export type MessageStatus = 'sent' | 'delivered' | 'read';
+
 export interface AppUser {
   uid: string;
   displayName: string;
@@ -17,6 +19,7 @@ export interface ChatRoom {
   >;
   lastMessage?: string;
   lastSenderId?: string;
+  lastMessageStatus?: MessageStatus;
   unreadCounts?: Record<string, number>;
   updatedAt?: any;
   createdBy?: string;
@@ -28,6 +31,7 @@ export interface Message {
   senderId: string;
   senderName: string;
   senderPhoto?: string;
+  status?: MessageStatus;
   createdAt?: any;
 }
 

@@ -25,24 +25,22 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
 
-          {/* Protected Modular Dashboard Routes */}
+          {/* Protected Dashboard Nested Routes */}
           <Route element={<ProtectedRoute />}>
-            <Route element={<DashboardLayout />}>
-              {/* Main Dashboard ab seedha Direct Chat open karega */}
-              <Route path="/dashboard" element={<ChatsPage defaultFilter="All" />} />
-              <Route path="/dashboard/chats" element={<ChatsPage defaultFilter="All" />} />
-
-              {/* Sidebar Overview Route */}
-              <Route path="/dashboard/overview" element={<OverviewPage />} />
-
-              <Route path="/dashboard/contacts" element={<ContactsPage />} />
-              <Route path="/dashboard/groups" element={<ChatsPage defaultFilter="Groups" />} />
-              <Route path="/dashboard/settings" element={<SettingsPage />} />
-              <Route path="/dashboard/support" element={<SupportPage />} />
+            <Route path="/dashboard" element={<DashboardLayout />}>
+              <Route index element={<ChatsPage key="chats-main" defaultFilter="All" />} />
+              <Route path="chats" element={<ChatsPage key="chats-tab" defaultFilter="All" />} />
+              <Route path="overview" element={<OverviewPage />} />
+              <Route path="contacts" element={<ContactsPage />} />
+              <Route path="groups" element={<ChatsPage key="chats-groups" defaultFilter="Groups" />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="support" element={<SupportPage />} />
+              {/* Dashboard ke andar kisi galat URL par fallback */}
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Route>
           </Route>
 
-          {/* Fallback */}
+          {/* Global Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>

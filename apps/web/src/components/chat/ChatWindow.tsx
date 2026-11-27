@@ -10,9 +10,10 @@ import {
   Smile,
   Paperclip,
   Send,
+  Check,
   CheckCheck,
 } from 'lucide-react';
-import { type ChatRoom, type Message, slimScrollbar } from '../../types/chat';
+import { type ChatRoom, type Message, type MessageStatus, slimScrollbar } from '../../types/chat';
 
 interface ChatWindowProps {
   activeChat: ChatRoom | null;
@@ -69,6 +70,36 @@ export default function ChatWindow({
     });
   };
 
+  const resolveMessageStatus = (msg: Message, isLastMessage: boolean): MessageStatus => {
+    if (msg.status === 'read') return 'read';
+    if (isLastMessage && activeChat?.lastMessageStatus === 'read') return 'read';
+    if (msg.status === 'delivered') return 'delivered';
+    if (isLastMessage && activeChat?.lastMessageStatus === 'delivered') return 'delivered';
+    return 'sent';
+  };
+
+  const renderTickIcon = (status: MessageStatus) => {
+    if (status === 'read') {
+      return (
+        <span title="Seen" className="inline-flex items-center">
+          <CheckCheck size={14} className="text-[#38BDF8]" />
+        </span>
+      );
+    }
+    if (status === 'delivered') {
+      return (
+        <span title="Delivered" className="inline-flex items-center">
+          <CheckCheck size={14} className="text-gray-400" />
+        </span>
+      );
+    }
+    return (
+      <span title="Sent" className="inline-flex items-center">
+        <Check size={14} className="text-gray-400" />
+      </span>
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
@@ -86,7 +117,7 @@ export default function ChatWindow({
       {activeChat ? (
         <>
           {/* Header */}
-          <header className="h-[60px] px-4 border-b border-white/10 bg-[#07110E] flex items-center justify-between shrink-0 z-10">
+          <header className="h-[62px] px-4 border-b border-white/10 bg-[#07110E] flex items-center justify-between shrink-0 z-10">
             <div onClick={onToggleRightPanel} className="flex items-center gap-3 min-w-0 cursor-pointer">
               <button
                 onClick={(e) => {
@@ -105,7 +136,7 @@ export default function ChatWindow({
               ) : getChatAvatar(activeChat) ? (
                 <img src={getChatAvatar(activeChat)!} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
               ) : (
-                <div className="w-10 h-10 rounded-full bg-[#0F2E22] text-[#00FF85] flex items-center justify-center font-bold shrink-0">
+                <div className="w-10 h-10 rounded-full bg-[#0F2E22] border border-[#00FF85]/25 text-[#00FF85] flex items-center justify-center font-bold shrink-0">
                   {getChatName(activeChat).charAt(0).toUpperCase()}
                 </div>
               )}
@@ -142,7 +173,7 @@ export default function ChatWindow({
             </div>
           </header>
 
-          {/* Messages */}
+          {/* Messages Area */}
           <div
             style={{
               backgroundImage: 'radial-gradient(rgba(0, 255, 133, 0.04) 1px, transparent 1px)',
@@ -151,15 +182,25 @@ export default function ChatWindow({
             className={`flex-1 overflow-y-auto px-4 sm:px-8 lg:px-14 py-4 flex flex-col ${slimScrollbar}`}
           >
             <div className="flex justify-center mb-4">
-              <span className="px-3 py-1 rounded-lg bg-[#0B1915] text-[11px] font-medium text-gray-400 border border-white/5 shadow-sm">
+              <span className="px-3.5 py-1 rounded-full bg-[#0B1915] text-[11px] font-medium text-gray-400 border border-white/5 shadow-sm">
                 Today
               </span>
             </div>
+
+            {messages.length === 0 && (
+              <div className="my-auto text-center">
+                <p className="inline-block px-4 py-2 rounded-xl bg-[#0B1915] border border-white/5 text-xs text-gray-400">
+                  Messages are private. Say hello to start the conversation!
+                </p>
+              </div>
+            )}
 
             {messages.map((msg, idx) => {
               const isMe = msg.senderId === currentUserId;
               const prevMsg = idx > 0 ? messages[idx - 1] : null;
               const isSameSenderAsPrev = prevMsg?.senderId === msg.senderId;
+              const isLastMessage = idx === messages.length - 1;
+              const status = resolveMessageStatus(msg, isLastMessage);
 
               return (
                 <div
@@ -169,10 +210,14 @@ export default function ChatWindow({
                   }`}
                 >
                   <div
-                    className={`relative max-w-[82%] sm:max-w-[65%] px-3 py-1.5 shadow-sm ${
+                    className={`relative max-w-[82%] sm:max-w-[65%] px-3.5 py-2 shadow-sm ${
                       isMe
-                        ? `bg-[#0B3B2A] text-gray-100 rounded-lg ${!isSameSenderAsPrev ? 'rounded-tr-none' : ''}`
-                        : `bg-[#101F1B] text-gray-100 rounded-lg border border-white/[0.04] ${!isSameSenderAsPrev ? 'rounded-tl-none' : ''}`
+                        ? `bg-[#0D2E23] border border-[#00FF85]/20 text-gray-100 rounded-2xl ${
+                            !isSameSenderAsPrev ? 'rounded-tr-sm' : ''
+                          }`
+                        : `bg-[#101E1A] border border-white/[0.06] text-gray-100 rounded-2xl ${
+                            !isSameSenderAsPrev ? 'rounded-tl-sm' : ''
+                          }`
                     }`}
                   >
                     {!isMe && activeChat.isGroup && !isSameSenderAsPrev && (
@@ -180,16 +225,16 @@ export default function ChatWindow({
                     )}
 
                     <div className="flex flex-wrap items-end gap-x-2.5">
-                      <span className="text-[14px] leading-[1.35] break-words whitespace-pre-wrap">
+                      <span className="text-[14px] leading-[1.4] break-words whitespace-pre-wrap">
                         {msg.text}
                       </span>
                       <span
                         className={`inline-flex items-center gap-1 text-[10px] ml-auto pt-1 shrink-0 select-none ${
-                          isMe ? 'text-[#86efac]/75' : 'text-gray-400/80'
+                          isMe ? 'text-gray-300/75' : 'text-gray-400/80'
                         }`}
                       >
                         {formatTime(msg.createdAt)}
-                        {isMe && <CheckCheck size={13} className="text-[#00FF85]" />}
+                        {isMe && renderTickIcon(status)}
                       </span>
                     </div>
                   </div>
@@ -199,13 +244,21 @@ export default function ChatWindow({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
+          {/* User-Friendly Input Bar */}
           <form onSubmit={handleSubmit} className="px-3 sm:px-4 py-2.5 bg-[#07110E] border-t border-white/10 shrink-0">
             <div className="flex items-center gap-2">
-              <button type="button" className="p-2 rounded-full text-gray-400 hover:bg-white/5 hover:text-[#00FF85] transition">
+              <button
+                type="button"
+                title="Emoji"
+                className="p-2 rounded-full text-gray-400 hover:bg-white/5 hover:text-[#00FF85] transition"
+              >
                 <Smile size={20} />
               </button>
-              <button type="button" className="p-2 rounded-full text-gray-400 hover:bg-white/5 hover:text-[#00FF85] transition">
+              <button
+                type="button"
+                title="Attach"
+                className="p-2 rounded-full text-gray-400 hover:bg-white/5 hover:text-[#00FF85] transition"
+              >
                 <Paperclip size={19} />
               </button>
 
@@ -213,14 +266,15 @@ export default function ChatWindow({
                 type="text"
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                placeholder="Type a message"
-                className="flex-1 bg-[#0C1B17] text-sm text-white placeholder-gray-500 px-4 py-2.5 rounded-lg border border-white/5 focus:outline-none focus:border-[#00FF85]/40 transition min-w-0"
+                placeholder="Type a message..."
+                className="flex-1 bg-[#0C1B17] text-sm text-white placeholder-gray-500 px-4 py-2.5 rounded-full border border-white/10 focus:outline-none focus:border-[#00FF85]/50 transition min-w-0"
               />
 
               <button
                 type="submit"
                 disabled={!newMessage.trim()}
-                className="p-2.5 rounded-full bg-[#00FF85] hover:bg-[#00e677] disabled:opacity-40 text-[#040B0A] flex items-center justify-center transition shrink-0"
+                title="Send Message"
+                className="p-2.5 rounded-full bg-[#00FF85] hover:bg-[#00e677] disabled:opacity-40 text-[#040B0A] flex items-center justify-center transition shadow-md shadow-[#00FF85]/15 shrink-0"
               >
                 <Send size={17} />
               </button>

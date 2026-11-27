@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { Users, Search, Plus, MoreVertical, CheckCheck } from 'lucide-react';
+import { Users, Search, Plus, MoreVertical, Check, CheckCheck } from 'lucide-react';
 import { type ChatRoom, slimScrollbar } from '../../types/chat';
+
 interface ChatListSidebarProps {
   chats: ChatRoom[];
   activeChat: ChatRoom | null;
@@ -84,6 +85,16 @@ export default function ChatListSidebar({
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  const renderSidebarTick = (chat: ChatRoom) => {
+    if (chat.lastMessageStatus === 'read') {
+      return <CheckCheck size={14} className="text-[#38BDF8] shrink-0" />;
+    }
+    if (chat.lastMessageStatus === 'delivered') {
+      return <CheckCheck size={14} className="text-gray-400 shrink-0" />;
+    }
+    return <Check size={14} className="text-gray-400 shrink-0" />;
   };
 
   const filteredChats = chats.filter((chat) => {
@@ -213,10 +224,8 @@ export default function ChatListSidebar({
                     </span>
                   </div>
                   <div className="flex justify-between items-center gap-2">
-                    <div className="flex items-center gap-1 min-w-0">
-                      {isLastFromMe && unread === 0 && (
-                        <CheckCheck size={14} className="text-[#00FF85] shrink-0" />
-                      )}
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {isLastFromMe && renderSidebarTick(chat)}
                       <p className={`text-[13px] truncate ${unread > 0 ? 'text-gray-100 font-medium' : 'text-gray-400'}`}>
                         {chat.lastMessage || 'Say hi!'}
                       </p>
