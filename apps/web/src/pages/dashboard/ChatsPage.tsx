@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   collection,
@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useUsersPresence } from '../../hooks/useUserPresence';
 import type { AppUser, ChatRoom, Message } from '../../types/chat';
 import ChatListSidebar from '../../components/chat/ChatListSidebar';
 import ChatWindow from '../../components/chat/ChatWindow';
@@ -34,8 +35,20 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     typeof window !== 'undefined' ? window.innerWidth >= 1280 : false
   );
 
-  // Live activeChat object so tick status updates in real time
   const activeChat = chats.find((c) => c.id === activeChatId) || null;
+
+  // Collect all unique participant UIDs across chats for live presence tracking
+  const allOtherUserIds = useMemo(() => {
+    const ids = new Set<string>();
+    chats.forEach((c) => {
+      c.participants.forEach((uid) => {
+        if (uid !== currentUser?.uid) ids.add(uid);
+      });
+    });
+    return Array.from(ids);
+  }, [chats, currentUser?.uid]);
+
+  const presenceMap = useUsersPresence(allOtherUserIds);
 
   const markChatAsRead = async (chatId: string) => {
     if (!currentUser) return;
@@ -48,7 +61,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     }
   };
 
-  // 1. Real-time Chats Listener + Auto Mark 'delivered' when receiver comes online
+  // Real-time Chats Listener
   useEffect(() => {
     if (!currentUser) return;
 
@@ -61,7 +74,6 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
       const chatList: ChatRoom[] = snapshot.docs.map((docSnap) => {
         const data = docSnap.data() as Omit<ChatRoom, 'id'>;
 
-        
         if (
           data.lastSenderId &&
           data.lastSenderId !== currentUser.uid &&
@@ -90,7 +102,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     return () => unsub();
   }, [currentUser, location.state]);
 
-  // 2. Real-time Messages Listener + Auto Mark 'read' (Double Blue Tick) when chat is open
+  // Real-time Messages Listener
   useEffect(() => {
     if (!activeChatId || !currentUser) {
       setMessages([]);
@@ -109,7 +121,6 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
       })) as Message[];
       setMessages(msgList);
 
-      // Samne wale ke unread messages ko 'read' mark karo
       const unreadDocs = snapshot.docs.filter((docSnap) => {
         const m = docSnap.data() as Message;
         return m.senderId !== currentUser.uid && m.status !== 'read';
@@ -133,7 +144,6 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     return () => unsub();
   }, [activeChatId, currentUser?.uid]);
 
-  // Start 1-on-1 Chat
   const handleStartDirectChat = async (targetUser: AppUser) => {
     if (!currentUser) return;
 
@@ -176,7 +186,6 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     setShowNewChatModal(false);
   };
 
-  // Create Group Chat
   const handleCreateGroup = async (groupName: string, selectedUsers: AppUser[]) => {
     if (!currentUser || !groupName.trim() || selectedUsers.length === 0) return;
 
@@ -221,7 +230,6 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     setShowNewChatModal(false);
   };
 
-  // Send Message with initial 'sent' status (Single Tick)
   const handleSendMessage = async (textToSend: string) => {
     if (!activeChatId || !activeChat || !currentUser) return;
 
@@ -257,6 +265,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
         chats={chats}
         activeChat={activeChat}
         currentUserId={currentUser?.uid}
+        presenceMap={presenceMap}
         defaultFilter={defaultFilter}
         onSelectChat={(chat) => {
           setActiveChatId(chat.id);
@@ -269,6 +278,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
         activeChat={activeChat}
         messages={messages}
         currentUserId={currentUser?.uid}
+        presenceMap={presenceMap}
         showRightPanel={showRightPanel}
         onToggleRightPanel={() => setShowRightPanel((prev) => !prev)}
         onBack={() => setActiveChatId(null)}
@@ -280,6 +290,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
         <ChatInfoPanel
           activeChat={activeChat}
           currentUserId={currentUser?.uid}
+          presenceMap={presenceMap}
           onClose={() => setShowRightPanel(false)}
         />
       )}

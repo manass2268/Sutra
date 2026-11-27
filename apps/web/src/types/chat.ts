@@ -6,6 +6,13 @@ export interface AppUser {
   email: string;
   username?: string;
   photoURL?: string;
+  isOnline?: boolean;
+  lastSeen?: any;
+}
+
+export interface UserPresenceInfo {
+  isOnline: boolean;
+  statusText: string;
 }
 
 export interface ChatRoom {

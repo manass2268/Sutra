@@ -1,30 +1,47 @@
-import {Users,UserPlus,Phone,Video,MoreVertical,Image as ImageIcon,Pin,FileText,Settings,ChevronRight,Search,X,}from 'lucide-react';
-import { type ChatRoom, slimScrollbar } from '../../types/chat';
+import {
+  Users,
+  UserPlus,
+  Phone,
+  Video,
+  MoreVertical,
+  Image as ImageIcon,
+  Pin,
+  FileText,
+  Settings,
+  ChevronRight,
+  Search,
+  X,
+} from 'lucide-react';
+import { type ChatRoom, type UserPresenceInfo, slimScrollbar } from '../../types/chat';
+
 interface ChatInfoPanelProps {
   activeChat: ChatRoom;
   currentUserId?: string;
+  presenceMap: Record<string, UserPresenceInfo>;
   onClose: () => void;
 }
 
-export default function ChatInfoPanel({ activeChat, currentUserId, onClose }: ChatInfoPanelProps) {
+export default function ChatInfoPanel({
+  activeChat,
+  currentUserId,
+  presenceMap,
+  onClose,
+}: ChatInfoPanelProps) {
+  const otherUid = !activeChat.isGroup
+    ? activeChat.participants.find((id) => id !== currentUserId)
+    : undefined;
+
   const getChatName = () => {
     if (activeChat.isGroup) return activeChat.name || 'Unnamed Group';
-    const otherUid = activeChat.participants.find((id) => id !== currentUserId);
     return (otherUid && activeChat.participantDetails?.[otherUid]?.displayName) || 'Direct Chat';
   };
 
   const getChatAvatar = () => {
     if (activeChat.isGroup) return null;
-    const otherUid = activeChat.participants.find((id) => id !== currentUserId);
     return (otherUid && activeChat.participantDetails?.[otherUid]?.photoURL) || null;
   };
 
-  const getOtherUsername = () => {
-    if (activeChat.isGroup) return `${activeChat.participants.length} members`;
-    const otherUid = activeChat.participants.find((id) => id !== currentUserId);
-    const uname = otherUid && activeChat.participantDetails?.[otherUid]?.username;
-    return uname ? `@${uname}` : 'Active now';
-  };
+  const otherPresence = otherUid ? presenceMap[otherUid] : undefined;
 
   return (
     <>
@@ -55,7 +72,19 @@ export default function ChatInfoPanel({ activeChat, currentUserId, onClose }: Ch
             </div>
           )}
           <h3 className="text-base font-bold text-white">{getChatName()}</h3>
-          <p className="text-xs text-[#00FF85]/80 mt-0.5">{getOtherUsername()}</p>
+          <p
+            className={`text-xs mt-0.5 ${
+              activeChat.isGroup
+                ? 'text-gray-400'
+                : otherPresence?.isOnline
+                ? 'text-[#00FF85] font-medium'
+                : 'text-gray-400'
+            }`}
+          >
+            {activeChat.isGroup
+              ? `${activeChat.participants.length} members`
+              : otherPresence?.statusText || 'offline'}
+          </p>
 
           <div className="grid grid-cols-4 gap-2 w-full mt-5">
             {[
@@ -113,11 +142,18 @@ export default function ChatInfoPanel({ activeChat, currentUserId, onClose }: Ch
               const detail = activeChat.participantDetails?.[uid];
               const isYou = uid === currentUserId;
               const isAdmin = uid === activeChat.createdBy;
+              const memberOnline = isYou || Boolean(presenceMap[uid]?.isOnline);
+
               return (
                 <div key={uid} className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-[#0F2E22] text-[#00FF85] flex items-center justify-center text-xs font-bold shrink-0">
-                      {(detail?.displayName || 'U').charAt(0).toUpperCase()}
+                    <div className="relative shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-[#0F2E22] text-[#00FF85] flex items-center justify-center text-xs font-bold">
+                        {(detail?.displayName || 'U').charAt(0).toUpperCase()}
+                      </div>
+                      {memberOnline && (
+                        <span className="absolute bottom-0 right-0 w-2 h-2 bg-[#00FF85] border border-[#07110E] rounded-full" />
+                      )}
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm text-gray-200 truncate">

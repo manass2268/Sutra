@@ -13,12 +13,19 @@ import {
   Check,
   CheckCheck,
 } from 'lucide-react';
-import { type ChatRoom, type Message, type MessageStatus, slimScrollbar } from '../../types/chat';
+import {
+  type ChatRoom,
+  type Message,
+  type MessageStatus,
+  type UserPresenceInfo,
+  slimScrollbar,
+} from '../../types/chat';
 
 interface ChatWindowProps {
   activeChat: ChatRoom | null;
   messages: Message[];
   currentUserId?: string;
+  presenceMap: Record<string, UserPresenceInfo>;
   showRightPanel: boolean;
   onToggleRightPanel: () => void;
   onBack: () => void;
@@ -30,6 +37,7 @@ export default function ChatWindow({
   activeChat,
   messages,
   currentUserId,
+  presenceMap,
   showRightPanel,
   onToggleRightPanel,
   onBack,
@@ -43,23 +51,52 @@ export default function ChatWindow({
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
   }, [messages.length, activeChat?.id]);
 
-  const getChatName = (chat: ChatRoom) => {
-    if (chat.isGroup) return chat.name || 'Unnamed Group';
-    const otherUid = chat.participants.find((id) => id !== currentUserId);
-    return (otherUid && chat.participantDetails?.[otherUid]?.displayName) || 'Direct Chat';
+  const getOtherUid = (chat: ChatRoom) => {
+    if (chat.isGroup) return undefined;
+    return chat.participants.find((id) => id !== currentUserId);
   };
 
-  const getChatSubtitle = (chat: ChatRoom) => {
-    if (chat.isGroup) return `${chat.participants.length} members`;
-    const otherUid = chat.participants.find((id) => id !== currentUserId);
-    const uname = otherUid && chat.participantDetails?.[otherUid]?.username;
-    return uname ? `@${uname} • online` : 'online';
+  const getChatName = (chat: ChatRoom) => {
+    if (chat.isGroup) return chat.name || 'Unnamed Group';
+    const otherUid = getOtherUid(chat);
+    return (otherUid && chat.participantDetails?.[otherUid]?.displayName) || 'Direct Chat';
   };
 
   const getChatAvatar = (chat: ChatRoom) => {
     if (chat.isGroup) return null;
-    const otherUid = chat.participants.find((id) => id !== currentUserId);
+    const otherUid = getOtherUid(chat);
     return (otherUid && chat.participantDetails?.[otherUid]?.photoURL) || null;
+  };
+
+  const renderPresenceSubtitle = (chat: ChatRoom) => {
+    if (chat.isGroup) {
+      const onlineCount = chat.participants.filter(
+        (uid) => uid !== currentUserId && presenceMap[uid]?.isOnline
+      ).length;
+      return (
+        <p className="text-[12px] text-gray-400 leading-tight mt-0.5 truncate">
+          {chat.participants.length} members
+          {onlineCount > 0 && <span className="text-[#00FF85]"> • {onlineCount} online</span>}
+        </p>
+      );
+    }
+
+    const otherUid = getOtherUid(chat);
+    const presence = otherUid ? presenceMap[otherUid] : undefined;
+
+    if (presence?.isOnline) {
+      return (
+        <p className="text-[12px] text-[#00FF85] font-medium leading-tight mt-0.5 truncate">
+          online
+        </p>
+      );
+    }
+
+    return (
+      <p className="text-[12px] text-gray-400 leading-tight mt-0.5 truncate">
+        {presence?.statusText || 'offline'}
+      </p>
+    );
   };
 
   const formatTime = (timestamp: any) => {
@@ -108,6 +145,9 @@ export default function ChatWindow({
     await onSendMessage(text);
   };
 
+  const otherUid = activeChat ? getOtherUid(activeChat) : undefined;
+  const isOtherOnline = otherUid ? Boolean(presenceMap[otherUid]?.isOnline) : false;
+
   return (
     <main
       className={`flex-1 flex-col bg-[#050C0A] relative min-w-0 ${
@@ -129,25 +169,28 @@ export default function ChatWindow({
                 <ArrowLeft size={20} />
               </button>
 
-              {activeChat.isGroup ? (
-                <div className="w-10 h-10 rounded-full bg-[#00FF85]/15 flex items-center justify-center text-[#00FF85] shrink-0">
-                  <Users size={18} />
-                </div>
-              ) : getChatAvatar(activeChat) ? (
-                <img src={getChatAvatar(activeChat)!} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-[#0F2E22] border border-[#00FF85]/25 text-[#00FF85] flex items-center justify-center font-bold shrink-0">
-                  {getChatName(activeChat).charAt(0).toUpperCase()}
-                </div>
-              )}
+              <div className="relative shrink-0">
+                {activeChat.isGroup ? (
+                  <div className="w-10 h-10 rounded-full bg-[#00FF85]/15 flex items-center justify-center text-[#00FF85]">
+                    <Users size={18} />
+                  </div>
+                ) : getChatAvatar(activeChat) ? (
+                  <img src={getChatAvatar(activeChat)!} alt="" className="w-10 h-10 rounded-full object-cover" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-[#0F2E22] border border-[#00FF85]/25 text-[#00FF85] flex items-center justify-center font-bold">
+                    {getChatName(activeChat).charAt(0).toUpperCase()}
+                  </div>
+                )}
+                {!activeChat.isGroup && isOtherOnline && (
+                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#00FF85] border-2 border-[#07110E] rounded-full" />
+                )}
+              </div>
 
               <div className="min-w-0">
                 <h2 className="text-[15px] font-semibold text-white leading-tight truncate">
                   {getChatName(activeChat)}
                 </h2>
-                <p className="text-[12px] text-[#00FF85]/80 leading-tight mt-0.5 truncate">
-                  {getChatSubtitle(activeChat)}
-                </p>
+                {renderPresenceSubtitle(activeChat)}
               </div>
             </div>
 
@@ -244,7 +287,7 @@ export default function ChatWindow({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* User-Friendly Input Bar */}
+          {/* Input Bar */}
           <form onSubmit={handleSubmit} className="px-3 sm:px-4 py-2.5 bg-[#07110E] border-t border-white/10 shrink-0">
             <div className="flex items-center gap-2">
               <button

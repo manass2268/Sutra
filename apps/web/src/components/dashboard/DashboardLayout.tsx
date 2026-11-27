@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
-import { auth } from '../../lib/firebase';
+import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTrackMyPresence } from '../../hooks/useUserPresence';
 import {
   LayoutDashboard,
   MessageSquare,
@@ -20,25 +22,87 @@ import {
 } from 'lucide-react';
 import Logo from '../../assets/SUTRA-favicon-64.png';
 
+interface NavConfig {
+  to: string;
+  label: string;
+  icon: React.ReactNode;
+  end?: boolean;
+  isChats?: boolean;
+}
+
 export default function DashboardLayout() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [isPinned, setIsPinned] = useState(false); // Click se lock/unlock
-  const [isHovered, setIsHovered] = useState(false); // Mouse hover se expand
-  const [mobileOpen, setMobileOpen] = useState(false); // Mobile drawer
-  const [activeNav, setActiveNav] = useState('Chats');
+  // Start real-time presence tracking for current user
+  useTrackMyPresence(user?.uid);
+
+  const [isPinned, setIsPinned] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [username, setUsername] = useState('');
+  const [liveDisplayName, setLiveDisplayName] = useState('');
 
   const isExpanded = isPinned || isHovered;
 
+  useEffect(() => {
+    if (!user) return;
+    const userRef = doc(db, 'users', user.uid);
+
+    const unsub = onSnapshot(userRef, async (snap) => {
+      if (snap.exists() && snap.data().username) {
+        setUsername(snap.data().username);
+        setLiveDisplayName(snap.data().displayName || user.displayName || 'User');
+      } else {
+        const base = (user.email?.split('@')[0] || 'user')
+          .replace(/[^a-z0-9]/gi, '')
+          .toLowerCase();
+        const generated = `${base}_${user.uid.slice(0, 4).toLowerCase()}`;
+        await setDoc(
+          userRef,
+          {
+            uid: user.uid,
+            displayName: user.displayName || base,
+            email: user.email || '',
+            username: generated,
+          },
+          { merge: true }
+        );
+      }
+    });
+
+    return () => unsub();
+  }, [user]);
+
   const handleLogout = async () => {
+    if (user) {
+      await setDoc(
+        doc(db, 'users', user.uid),
+        { isOnline: false, lastSeen: serverTimestamp() },
+        { merge: true }
+      ).catch(() => {});
+    }
     await signOut(auth);
     navigate('/login');
   };
 
+  const navItems: NavConfig[] = [
+    { to: '/dashboard/overview', label: 'Overview', icon: <LayoutDashboard size={19} /> },
+    { to: '/dashboard', label: 'Chats', icon: <MessageSquare size={19} />, end: true, isChats: true },
+    { to: '/dashboard/contacts', label: 'Contacts', icon: <BookUser size={19} /> },
+    { to: '/dashboard/groups', label: 'Groups', icon: <Users size={19} /> },
+  ];
+
+  const prefItems: NavConfig[] = [
+    { to: '/dashboard/settings', label: 'Settings', icon: <Settings size={19} /> },
+    { to: '/dashboard/support', label: 'Help & Support', icon: <HelpCircle size={19} /> },
+  ];
+
+  const displayNameToShow = liveDisplayName || user?.displayName || 'User';
+
   return (
     <div className="h-screen w-full bg-[#040B0A] text-white flex overflow-hidden font-sans">
-      {/* Mobile Backdrop */}
       {mobileOpen && (
         <div
           onClick={() => setMobileOpen(false)}
@@ -46,7 +110,7 @@ export default function DashboardLayout() {
         />
       )}
 
-      {/* SIDEBAR (Desktop: Hover + Click Expand | Mobile: Slide Drawer) */}
+      {/* SIDEBAR */}
       <aside
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
@@ -54,9 +118,12 @@ export default function DashboardLayout() {
           mobileOpen ? 'translate-x-0 w-64' : '-translate-x-full md:translate-x-0'
         } ${isExpanded ? 'md:w-64' : 'md:w-[76px]'}`}
       >
-        {/* Logo Area */}
         <div className="h-16 px-4 flex items-center justify-between border-b border-white/5 shrink-0">
-          <div className="flex items-center gap-3 overflow-hidden">
+          <NavLink
+            to="/dashboard"
+            onClick={() => setMobileOpen(false)}
+            className="flex items-center gap-3 overflow-hidden"
+          >
             <img
               src={Logo}
               alt="SUTRA Logo"
@@ -69,9 +136,8 @@ export default function DashboardLayout() {
             >
               SUTRAA
             </span>
-          </div>
+          </NavLink>
 
-          {/* Mobile Close Button */}
           <button
             onClick={() => setMobileOpen(false)}
             className="md:hidden p-1.5 rounded-lg text-gray-400 hover:bg-white/5 hover:text-white"
@@ -80,9 +146,7 @@ export default function DashboardLayout() {
           </button>
         </div>
 
-        {/* Navigation Links */}
         <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto overflow-x-hidden">
-          {/* Desktop Sidebar Toggle Button */}
           <button
             type="button"
             onClick={() => setIsPinned((prev) => !prev)}
@@ -105,46 +169,15 @@ export default function DashboardLayout() {
             )}
           </button>
 
-          <NavItem
-            icon={<LayoutDashboard size={19} />}
-            label="Overview"
-            active={activeNav === 'Overview'}
-            expanded={isExpanded || mobileOpen}
-            onClick={() => {
-              setActiveNav('Overview');
-              setMobileOpen(false);
-            }}
-          />
-          <NavItem
-            icon={<MessageSquare size={19} />}
-            label="Chats"
-            active={activeNav === 'Chats'}
-            expanded={isExpanded || mobileOpen}
-            onClick={() => {
-              setActiveNav('Chats');
-              setMobileOpen(false);
-            }}
-          />
-          <NavItem
-            icon={<BookUser size={19} />}
-            label="Contacts"
-            active={activeNav === 'Contacts'}
-            expanded={isExpanded || mobileOpen}
-            onClick={() => {
-              setActiveNav('Contacts');
-              setMobileOpen(false);
-            }}
-          />
-          <NavItem
-            icon={<Users size={19} />}
-            label="Groups"
-            active={activeNav === 'Groups'}
-            expanded={isExpanded || mobileOpen}
-            onClick={() => {
-              setActiveNav('Groups');
-              setMobileOpen(false);
-            }}
-          />
+          {navItems.map((item) => (
+            <SidebarLink
+              key={item.to}
+              item={item}
+              expanded={isExpanded || mobileOpen}
+              currentPath={location.pathname}
+              onClick={() => setMobileOpen(false)}
+            />
+          ))}
 
           <div className="pt-6 pb-2">
             {isExpanded || mobileOpen ? (
@@ -156,29 +189,17 @@ export default function DashboardLayout() {
             )}
           </div>
 
-          <NavItem
-            icon={<Settings size={19} />}
-            label="Settings"
-            active={activeNav === 'Settings'}
-            expanded={isExpanded || mobileOpen}
-            onClick={() => {
-              setActiveNav('Settings');
-              setMobileOpen(false);
-            }}
-          />
-          <NavItem
-            icon={<HelpCircle size={19} />}
-            label="Help & Support"
-            active={activeNav === 'Help & Support'}
-            expanded={isExpanded || mobileOpen}
-            onClick={() => {
-              setActiveNav('Help & Support');
-              setMobileOpen(false);
-            }}
-          />
+          {prefItems.map((item) => (
+            <SidebarLink
+              key={item.to}
+              item={item}
+              expanded={isExpanded || mobileOpen}
+              currentPath={location.pathname}
+              onClick={() => setMobileOpen(false)}
+            />
+          ))}
         </nav>
 
-        {/* Logout Footer */}
         <div className="p-3 border-t border-white/5 shrink-0">
           <button
             onClick={handleLogout}
@@ -197,10 +218,8 @@ export default function DashboardLayout() {
 
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden">
-        {/* Topbar */}
         <header className="h-16 flex items-center justify-between px-4 sm:px-6 bg-[#040B0A] border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3">
-            {/* Mobile Only Menu Button */}
             <button
               onClick={() => setMobileOpen(true)}
               className="md:hidden p-2 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition-colors"
@@ -213,34 +232,43 @@ export default function DashboardLayout() {
               <input
                 type="text"
                 placeholder="Search SUTRAA..."
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') navigate('/dashboard/contacts');
+                }}
                 className="bg-transparent border-none outline-none text-sm ml-3 w-full text-white placeholder-gray-500"
               />
             </div>
           </div>
 
           <div className="flex items-center gap-4 sm:gap-5">
-            <button className="relative p-2 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition-colors">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="relative p-2 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition-colors"
+            >
               <Bell size={19} />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#00FF85] rounded-full"></span>
             </button>
 
-            <div className="flex items-center gap-3">
+            <NavLink
+              to="/dashboard/settings"
+              title="Edit Profile & @username"
+              className="flex items-center gap-3"
+            >
               <div className="hidden text-right sm:block">
                 <p className="text-sm font-semibold leading-none text-white">
-                  {user?.displayName || 'User'}
+                  {displayNameToShow}
                 </p>
-                <p className="text-xs text-gray-400 mt-1">{user?.email}</p>
+                <p className="text-xs text-[#00FF85] mt-1">
+                  {username ? `@${username}` : user?.email}
+                </p>
               </div>
               <div className="w-9 h-9 rounded-full bg-[#0F2E22] border border-[#00FF85]/35 flex items-center justify-center text-[#00FF85] font-bold text-sm shrink-0">
-                {user?.displayName
-                  ? user.displayName.charAt(0).toUpperCase()
-                  : user?.email?.charAt(0).toUpperCase() || 'U'}
+                {displayNameToShow.charAt(0).toUpperCase()}
               </div>
-            </div>
+            </NavLink>
           </div>
         </header>
 
-        {/* Dynamic Page Content */}
         <div className="flex-1 overflow-hidden">
           <Outlet />
         </div>
@@ -249,34 +277,37 @@ export default function DashboardLayout() {
   );
 }
 
-function NavItem({
-  icon,
-  label,
-  active = false,
-  expanded = false,
+function SidebarLink({
+  item,
+  expanded,
+  currentPath,
   onClick,
 }: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  expanded?: boolean;
-  onClick?: () => void;
+  item: NavConfig;
+  expanded: boolean;
+  currentPath: string;
+  onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <NavLink
+      to={item.to}
+      end={item.end}
       onClick={onClick}
-      title={!expanded ? label : undefined}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-        !expanded ? 'justify-center' : ''
-      } ${
-        active
-          ? 'bg-[#00FF85]/12 text-[#00FF85] border border-[#00FF85]/25 shadow-[0_0_15px_rgba(0,255,133,0.08)]'
-          : 'text-gray-400 hover:bg-white/5 hover:text-white border border-transparent'
-      }`}
+      title={!expanded ? item.label : undefined}
+      className={({ isActive }) => {
+        const active =
+          isActive || (item.isChats && currentPath.startsWith('/dashboard/chats'));
+        return `w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+          !expanded ? 'justify-center' : ''
+        } ${
+          active
+            ? 'bg-[#00FF85]/12 text-[#00FF85] border border-[#00FF85]/25 shadow-[0_0_15px_rgba(0,255,133,0.08)]'
+            : 'text-gray-400 hover:bg-white/5 hover:text-white border border-transparent'
+        }`;
+      }}
     >
-      <span className="shrink-0">{icon}</span>
-      {expanded && <span className="font-medium text-sm whitespace-nowrap truncate">{label}</span>}
-    </button>
+      <span className="shrink-0">{item.icon}</span>
+      {expanded && <span className="font-medium text-sm whitespace-nowrap truncate">{item.label}</span>}
+    </NavLink>
   );
 }

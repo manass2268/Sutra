@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { Users, Search, Plus, MoreVertical, Check, CheckCheck } from 'lucide-react';
-import { type ChatRoom, slimScrollbar } from '../../types/chat';
+import { type ChatRoom, type UserPresenceInfo, slimScrollbar } from '../../types/chat';
 
 interface ChatListSidebarProps {
   chats: ChatRoom[];
   activeChat: ChatRoom | null;
   currentUserId?: string;
+  presenceMap: Record<string, UserPresenceInfo>;
   defaultFilter?: 'All' | 'Unread' | 'Groups' | 'Pinned';
   onSelectChat: (chat: ChatRoom) => void;
   onOpenNewChat: () => void;
@@ -15,6 +16,7 @@ export default function ChatListSidebar({
   chats,
   activeChat,
   currentUserId,
+  presenceMap,
   defaultFilter = 'All',
   onSelectChat,
   onOpenNewChat,
@@ -60,15 +62,20 @@ export default function ChatListSidebar({
     document.body.style.userSelect = 'none';
   };
 
+  const getOtherUid = (chat: ChatRoom) => {
+    if (chat.isGroup) return undefined;
+    return chat.participants.find((id) => id !== currentUserId);
+  };
+
   const getChatName = (chat: ChatRoom) => {
     if (chat.isGroup) return chat.name || 'Unnamed Group';
-    const otherUid = chat.participants.find((id) => id !== currentUserId);
+    const otherUid = getOtherUid(chat);
     return (otherUid && chat.participantDetails?.[otherUid]?.displayName) || 'Direct Chat';
   };
 
   const getChatAvatar = (chat: ChatRoom) => {
     if (chat.isGroup) return null;
-    const otherUid = chat.participants.find((id) => id !== currentUserId);
+    const otherUid = getOtherUid(chat);
     return (otherUid && chat.participantDetails?.[otherUid]?.photoURL) || null;
   };
 
@@ -112,7 +119,6 @@ export default function ChatListSidebar({
         activeChat ? 'hidden md:flex' : 'flex'
       }`}
     >
-      {/* Header */}
       <div className="px-4 pt-4 pb-2.5 flex items-center justify-between shrink-0">
         <h1 className="text-xl font-bold tracking-tight text-white">
           {defaultFilter === 'Groups' ? 'Groups' : 'Chats'}
@@ -131,7 +137,6 @@ export default function ChatListSidebar({
         </div>
       </div>
 
-      {/* Search */}
       <div className="px-3 pb-2.5 shrink-0">
         <div className="relative">
           <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -145,7 +150,6 @@ export default function ChatListSidebar({
         </div>
       </div>
 
-      {/* Filter Pills */}
       <div className="px-3 pb-2.5 flex items-center gap-1.5 flex-wrap shrink-0 border-b border-white/5">
         {(['All', 'Unread', 'Groups', 'Pinned'] as const).map((tab) => (
           <button
@@ -167,7 +171,6 @@ export default function ChatListSidebar({
         ))}
       </div>
 
-      {/* Chat List */}
       <div className={`flex-1 overflow-y-auto ${slimScrollbar}`}>
         {filteredChats.length === 0 ? (
           <div className="text-center py-14 px-4">
@@ -190,6 +193,8 @@ export default function ChatListSidebar({
             const avatar = getChatAvatar(chat);
             const unread = getUnreadCount(chat);
             const isLastFromMe = chat.lastSenderId === currentUserId;
+            const otherUid = getOtherUid(chat);
+            const isOnline = otherUid ? Boolean(presenceMap[otherUid]?.isOnline) : false;
 
             return (
               <div
@@ -211,7 +216,9 @@ export default function ChatListSidebar({
                       {name.charAt(0).toUpperCase()}
                     </div>
                   )}
-                  <span className="absolute bottom-0 right-0 w-3 h-3 bg-[#00FF85] border-2 border-[#07110E] rounded-full" />
+                  {!chat.isGroup && isOnline && (
+                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-[#00FF85] border-2 border-[#07110E] rounded-full" />
+                  )}
                 </div>
 
                 <div className="flex-1 min-w-0">
@@ -243,7 +250,6 @@ export default function ChatListSidebar({
         )}
       </div>
 
-      {/* Drag Resize Handle */}
       <div
         onMouseDown={startResizing}
         title="Drag to resize"
