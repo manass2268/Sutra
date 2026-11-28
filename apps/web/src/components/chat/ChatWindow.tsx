@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   MessageSquare,
   Users,
@@ -13,6 +13,7 @@ import {
   Check,
   CheckCheck,
   ChevronDown,
+  ArrowDown,
   Trash2,
   Ban,
   Reply,
@@ -69,19 +70,65 @@ export default function ChatWindow({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [reactPickerMsgId, setReactPickerMsgId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<ReplyPreview | null>(null);
+  const [showScrollDownBtn, setShowScrollDownBtn] = useState(false);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pendingInitialJumpChatIdRef = useRef<string | null>(null);
+  const isNearBottomRef = useRef(true);
 
-  useEffect(() => {
-    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
-  }, [messages.length, activeChat?.id]);
+  const typingParticipantNames = activeChat
+    ? activeChat.participants
+        .filter((uid) => uid !== currentUserId && activeChat.typingUsers?.[uid])
+        .map((uid) => activeChat.participantDetails?.[uid]?.displayName || 'Someone')
+    : [];
 
-  useEffect(() => {
+  const isSomeoneTyping = typingParticipantNames.length > 0;
+
+  // Chat change hote hi mark karo ki is chat ke messages paint hone se pehle seedha neeche khulne chahiye
+  useLayoutEffect(() => {
     setReplyingTo(null);
     setOpenMenuId(null);
     setReactPickerMsgId(null);
+    setShowScrollDownBtn(false);
+    isNearBottomRef.current = true;
+    pendingInitialJumpChatIdRef.current = activeChat?.id || null;
+
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [activeChat?.id]);
+
+  // Synchronous bottom positioning before browser paints (mobile + desktop par top flash khatam)
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container || !activeChat?.id) return;
+
+    const isInitialOpen = pendingInitialJumpChatIdRef.current === activeChat.id;
+    const lastMsg = messages[messages.length - 1];
+    const isLastMsgMine = Boolean(lastMsg && lastMsg.senderId === currentUserId);
+
+    if (isInitialOpen) {
+      container.scrollTop = container.scrollHeight;
+      requestAnimationFrame(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      });
+      if (messages.length > 0) {
+        pendingInitialJumpChatIdRef.current = null;
+      }
+      return;
+    }
+
+    if (isNearBottomRef.current || isLastMsgMine) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
+  }, [messages.length, isSomeoneTyping, activeChat?.id, currentUserId, messages]);
 
   useEffect(() => {
     if (!openMenuId && !reactPickerMsgId) return;
@@ -92,6 +139,26 @@ export default function ChatWindow({
     window.addEventListener('click', handleOutsideClick);
     return () => window.removeEventListener('click', handleOutsideClick);
   }, [openMenuId, reactPickerMsgId]);
+
+  const handleMessagesScroll = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    isNearBottomRef.current = distanceFromBottom < 140;
+    setShowScrollDownBtn(distanceFromBottom > 240);
+  };
+
+  const scrollToLatest = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: 'smooth',
+    });
+    setShowScrollDownBtn(false);
+  };
 
   const getOtherUid = (chat: ChatRoom) => {
     if (chat.isGroup) return undefined;
@@ -109,15 +176,6 @@ export default function ChatWindow({
     const otherUid = getOtherUid(chat);
     return (otherUid && chat.participantDetails?.[otherUid]?.photoURL) || null;
   };
-
-  // Check if any other participant is currently typing
-  const typingParticipantNames = activeChat
-    ? activeChat.participants
-        .filter((uid) => uid !== currentUserId && activeChat.typingUsers?.[uid])
-        .map((uid) => activeChat.participantDetails?.[uid]?.displayName || 'Someone')
-    : [];
-
-  const isSomeoneTyping = typingParticipantNames.length > 0;
 
   const renderPresenceSubtitle = (chat: ChatRoom) => {
     if (isSomeoneTyping) {
@@ -208,6 +266,7 @@ export default function ChatWindow({
     const replyPayload = replyingTo;
     setNewMessage('');
     setReplyingTo(null);
+    isNearBottomRef.current = true;
     await onSendMessage(text, replyPayload);
   };
 
@@ -225,7 +284,7 @@ export default function ChatWindow({
 
   return (
     <main
-      className={`flex-1 flex-col bg-[#050C0A] relative min-w-0 ${
+      className={`flex-1 flex-col bg-[#050C0A] relative min-w-0 h-full overflow-hidden ${
         activeChat ? 'flex' : 'hidden md:flex'
       }`}
     >
@@ -308,14 +367,20 @@ export default function ChatWindow({
             </div>
           </header>
 
-          {/* Messages Area */}
+          {/* Messages Area (Opens Directly at Bottom) */}
           <div
+            ref={messagesContainerRef}
+            onScroll={handleMessagesScroll}
             style={{
               backgroundImage: 'radial-gradient(rgba(0, 255, 133, 0.04) 1px, transparent 1px)',
               backgroundSize: '22px 22px',
+              overflowAnchor: 'auto',
             }}
             className={`flex-1 overflow-y-auto px-4 sm:px-8 lg:px-14 py-4 flex flex-col ${slimScrollbar}`}
           >
+            {/* Spacer pushes short conversations to the bottom just like WhatsApp */}
+            <div className="mt-auto" />
+
             <div className="flex justify-center mb-4">
               <span className="px-3.5 py-1 rounded-full bg-[#0B1915] text-[11px] font-medium text-gray-400 border border-white/5 shadow-sm">
                 Today
@@ -323,7 +388,7 @@ export default function ChatWindow({
             </div>
 
             {messages.length === 0 && (
-              <div className="my-auto text-center">
+              <div className="my-6 text-center">
                 <p className="inline-block px-4 py-2 rounded-xl bg-[#0B1915] border border-white/5 text-xs text-gray-400">
                   Messages are private. Say hello to start the conversation!
                 </p>
@@ -387,7 +452,7 @@ export default function ChatWindow({
                           }`
                     }`}
                   >
-                    {/* Instagram / WhatsApp Emoji Reaction Picker Popover */}
+                    {/* Emoji Reaction Picker Popover */}
                     {isReactOpen && (
                       <div
                         onClick={(e) => e.stopPropagation()}
@@ -482,7 +547,7 @@ export default function ChatWindow({
                       </div>
                     )}
 
-                    {/* Quoted Reply Block inside Bubble */}
+                    {/* Quoted Reply Block */}
                     {msg.replyTo && !msg.isDeleted && (
                       <div className="mb-1.5 px-2.5 py-1.5 rounded-lg bg-black/25 border-l-2 border-[#00FF85] text-xs">
                         <p className="font-semibold text-[#00FF85] text-[11px]">
@@ -573,7 +638,7 @@ export default function ChatWindow({
               );
             })}
 
-            {/* Live Animated Typing Bubble (WhatsApp / Instagram Style) */}
+            {/* Live Animated Typing Bubble */}
             {isSomeoneTyping && (
               <div className="flex justify-start mt-3">
                 <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-[#101E1A] border border-white/[0.06] flex items-center gap-1.5">
@@ -583,13 +648,23 @@ export default function ChatWindow({
                 </div>
               </div>
             )}
-
-            <div ref={messagesEndRef} />
           </div>
 
-          {/* Reply Preview Bar (Above Input) */}
+          {/* Floating Scroll-to-Bottom Button (when user scrolls up) */}
+          {showScrollDownBtn && (
+            <button
+              type="button"
+              onClick={scrollToLatest}
+              title="Scroll to latest message"
+              className="absolute bottom-20 right-5 z-20 p-2.5 rounded-full bg-[#0B1915] hover:bg-[#112620] border border-white/15 text-[#00FF85] shadow-xl transition"
+            >
+              <ArrowDown size={18} />
+            </button>
+          )}
+
+          {/* Reply Preview Bar */}
           {replyingTo && (
-            <div className="px-4 py-2 bg-[#091713] border-t border-white/10 flex items-center justify-between gap-3">
+            <div className="px-4 py-2 bg-[#091713] border-t border-white/10 flex items-center justify-between gap-3 shrink-0">
               <div className="pl-2.5 border-l-2 border-[#00FF85] min-w-0">
                 <p className="text-xs font-semibold text-[#00FF85]">
                   Replying to {replyingTo.senderName}

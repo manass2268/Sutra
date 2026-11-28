@@ -104,7 +104,7 @@ export default function DashboardLayout() {
   const displayNameToShow = liveDisplayName || user?.displayName || 'User';
 
   return (
-    <div className="h-screen w-full bg-[#040B0A] text-white flex overflow-hidden font-sans">
+    <div className="h-[100dvh] w-full bg-[#040B0A] text-white flex overflow-hidden font-sans">
       {mobileOpen && (
         <div
           onClick={() => setMobileOpen(false)}
@@ -219,7 +219,7 @@ export default function DashboardLayout() {
       </aside>
 
       {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col h-[100dvh] min-w-0 overflow-hidden">
         <header className="h-16 flex items-center justify-between px-4 sm:px-6 bg-[#040B0A] border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3">
             <button
