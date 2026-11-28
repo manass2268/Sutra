@@ -2,22 +2,20 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function ProtectedRoute() {
-  const { user, loading } = useAuth();
+  const auth = useAuth() as { user: any; loading?: boolean };
 
-  
-  const isLocalTesting = import.meta.env.DEV;
-
-  if (loading) {
+  // Jab tak Firebase session check ho raha hai, login page par redirect mat karo
+  if (auth.loading) {
     return (
-      <div className="min-h-screen bg-[#03120F] flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-[#20E875] border-t-transparent rounded-full animate-spin"></div>
+      <div className="h-screen w-full bg-[#040B0A] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#00FF85] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
-  if (isLocalTesting) {
-    return <Outlet />;
+  if (!auth.user) {
+    return <Navigate to="/login" replace />;
   }
 
-  return user ? <Outlet /> : <Navigate to="/login" replace />;
+  return <Outlet />;
 }

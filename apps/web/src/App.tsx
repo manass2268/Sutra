@@ -6,6 +6,7 @@ import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ProtectedRoute from './routes/ProtectedRoute';
+import PublicRoute from './routes/PublicRoute';
 import DashboardLayout from './components/dashboard/DashboardLayout';
 
 // Modular Dashboard Pages
@@ -20,10 +21,12 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
-          {/* Public Routes */}
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
+          {/* Public Routes: Logged-in user ko seedha /dashboard (Chats) par bhejenge */}
+          <Route element={<PublicRoute />}>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+          </Route>
 
           {/* Protected Dashboard Nested Routes */}
           <Route element={<ProtectedRoute />}>
