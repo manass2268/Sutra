@@ -5,7 +5,10 @@ export interface AppUser {
   displayName: string;
   email: string;
   username?: string;
+  phoneNumber?: string;
+  phoneDigits?: string;
   photoURL?: string;
+  bio?: string;
   isOnline?: boolean;
   lastSeen?: any;
 }

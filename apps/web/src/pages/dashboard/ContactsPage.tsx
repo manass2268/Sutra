@@ -2,205 +2,199 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   collection,
+  getDocs,
   query,
   where,
-  getDocs,
-  onSnapshot,
   addDoc,
   serverTimestamp,
   doc,
   getDoc,
 } from 'firebase/firestore';
-import { AtSign, MessageSquare, UserCheck } from 'lucide-react';
+import { Search, MessageSquare, Phone, AtSign, Users } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import { type AppUser, type ChatRoom, slimScrollbar } from '../../types/chat';
+import { type AppUser, slimScrollbar } from '../../types/chat';
 
 export default function ContactsPage() {
-  const { user } = useAuth();
+  const { user: currentUser } = useAuth();
   const navigate = useNavigate();
 
-  const [chats, setChats] = useState<ChatRoom[]>([]);
-  const [usernameInput, setUsernameInput] = useState('');
-  const [foundUser, setFoundUser] = useState<AppUser | null>(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [openingUid, setOpeningUid] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
-    return onSnapshot(q, (snap) => {
-      setChats(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ChatRoom[]);
-    });
-  }, [user]);
+    if (!currentUser) return;
+    getDocs(collection(db, 'users'))
+      .then((snap) => {
+        const list = snap.docs
+          .map((d) => ({ uid: d.id, ...d.data() } as AppUser))
+          .filter((u) => u.uid !== currentUser.uid);
+        setUsers(list);
+      })
+      .finally(() => setLoading(false));
+  }, [currentUser]);
 
-  const handleFindByUsername = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const clean = usernameInput.trim().replace(/^@/, '').toLowerCase();
-    if (!clean || !user) return;
-
-    setLoading(true);
-    setError('');
-    setFoundUser(null);
+  const handleOpenChatWithUser = async (targetUser: AppUser) => {
+    if (!currentUser || openingUid) return;
+    setOpeningUid(targetUser.uid);
 
     try {
-      const snap = await getDocs(query(collection(db, 'users'), where('username', '==', clean)));
-      if (snap.empty) {
-        setError(`No user found with @${clean}`);
-      } else {
-        const data = snap.docs[0].data() as AppUser;
-        if (data.uid === user.uid) {
-          setError('This is your own username.');
-        } else {
-          setFoundUser(data);
-        }
+      const chatsSnap = await getDocs(
+        query(collection(db, 'chats'), where('participants', 'array-contains', currentUser.uid))
+      );
+
+      const existingDirect = chatsSnap.docs.find((d) => {
+        const data = d.data();
+        return !data.isGroup && Array.isArray(data.participants) && data.participants.includes(targetUser.uid);
+      });
+
+      if (existingDirect) {
+        navigate('/dashboard', { state: { openChatId: existingDirect.id } });
+        return;
       }
-    } catch {
-      setError('Search failed. Try again.');
+
+      const mySnap = await getDoc(doc(db, 'users', currentUser.uid));
+      const myData = mySnap.exists() ? mySnap.data() : {};
+
+      const newChatRef = await addDoc(collection(db, 'chats'), {
+        isGroup: false,
+        participants: [currentUser.uid, targetUser.uid],
+        participantDetails: {
+          [currentUser.uid]: {
+            displayName: myData.displayName || currentUser.displayName || 'Sutra User',
+            username: myData.username || '',
+            photoURL: myData.photoURL || currentUser.photoURL || '',
+            email: currentUser.email || '',
+          },
+          [targetUser.uid]: {
+            displayName: targetUser.displayName || 'Sutra User',
+            username: targetUser.username || '',
+            photoURL: targetUser.photoURL || '',
+            email: targetUser.email || '',
+          },
+        },
+        lastMessage: 'Started a conversation',
+        lastSenderId: currentUser.uid,
+        lastMessageStatus: 'sent',
+        lastMessageDeleted: false,
+        unreadCounts: { [currentUser.uid]: 0, [targetUser.uid]: 0 },
+        typingUsers: {},
+        updatedAt: serverTimestamp(),
+        createdBy: currentUser.uid,
+      });
+
+      navigate('/dashboard', { state: { openChatId: newChatRef.id } });
     } finally {
-      setLoading(false);
+      setOpeningUid(null);
     }
   };
 
-  const openChatWithUser = async (target: AppUser) => {
-    if (!user) return;
-    const existing = chats.find((c) => !c.isGroup && c.participants.includes(target.uid));
-    if (existing) {
-      navigate('/dashboard/chats', { state: { openChatId: existing.id } });
-      return;
-    }
+  const trimmed = search.trim().toLowerCase();
+  const cleanHandle = trimmed.replace(/^@/, '');
+  const cleanDigits = trimmed.replace(/\D/g, '');
 
-    const mySnap = await getDoc(doc(db, 'users', user.uid));
-    const myUsername = mySnap.exists() ? mySnap.data().username : '';
-
-    const ref = await addDoc(collection(db, 'chats'), {
-      isGroup: false,
-      participants: [user.uid, target.uid],
-      participantDetails: {
-        [user.uid]: {
-          displayName: user.displayName || 'Sutra User',
-          username: myUsername || '',
-          email: user.email || '',
-        },
-        [target.uid]: {
-          displayName: target.displayName || 'Sutra User',
-          username: target.username || '',
-          email: target.email || '',
-        },
-      },
-      lastMessage: 'Started a conversation',
-      lastSenderId: user.uid,
-      unreadCounts: { [user.uid]: 0, [target.uid]: 0 },
-      updatedAt: serverTimestamp(),
-      createdBy: user.uid,
-    });
-
-    navigate('/dashboard/chats', { state: { openChatId: ref.id } });
-  };
-
-  // Extract connected direct contacts
-  const connectedContacts = chats
-    .filter((c) => !c.isGroup)
-    .map((c) => {
-      const otherUid = c.participants.find((id) => id !== user?.uid) || '';
-      const details = c.participantDetails?.[otherUid];
-      return {
-        chatId: c.id,
-        uid: otherUid,
-        displayName: details?.displayName || 'User',
-        username: details?.username || '',
-        email: details?.email || '',
-      };
-    });
+  const filteredUsers = users.filter((u) => {
+    if (!trimmed) return true;
+    const nameMatch = (u.displayName || '').toLowerCase().includes(trimmed);
+    const usernameMatch = (u.username || '').toLowerCase().includes(cleanHandle);
+    const phoneMatch =
+      cleanDigits.length >= 4 &&
+      ((u.phoneDigits && u.phoneDigits.includes(cleanDigits)) ||
+        (u.phoneNumber && u.phoneNumber.replace(/\D/g, '').includes(cleanDigits)));
+    return nameMatch || usernameMatch || Boolean(phoneMatch);
+  });
 
   return (
-    <div className={`h-full overflow-y-auto p-6 md:p-8 bg-[#040B0A] ${slimScrollbar}`}>
+    <div className={`h-full overflow-y-auto p-4 sm:p-6 md:p-8 bg-[#040B0A] ${slimScrollbar}`}>
       <div className="max-w-4xl mx-auto space-y-6">
-        {/* Search by @username */}
-        <div className="p-6 rounded-2xl bg-[#07110E] border border-white/10">
-          <h1 className="text-xl font-bold text-white mb-1">Find Contact by @username</h1>
-          <p className="text-xs text-gray-400 mb-4">
-            Privacy protected: enter exact username to connect and start chatting.
-          </p>
-
-          <form onSubmit={handleFindByUsername} className="flex gap-2">
-            <div className="relative flex-1">
-              <AtSign size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#00FF85]" />
-              <input
-                type="text"
-                value={usernameInput}
-                onChange={(e) => setUsernameInput(e.target.value)}
-                placeholder="e.g. sanskarsingh"
-                className="w-full bg-[#0C1B17] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00FF85]"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={loading || !usernameInput.trim()}
-              className="px-5 py-2.5 rounded-xl bg-[#00FF85] hover:bg-[#00e677] disabled:opacity-40 text-[#040B0A] text-sm font-bold transition"
-            >
-              {loading ? 'Searching...' : 'Search'}
-            </button>
-          </form>
-
-          {error && <p className="text-xs text-red-400 mt-3">{error}</p>}
-
-          {foundUser && (
-            <div className="mt-4 p-4 rounded-xl bg-[#0E241C] border border-[#00FF85]/35 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-bold text-white">{foundUser.displayName}</p>
-                <p className="text-xs text-[#00FF85]">@{foundUser.username}</p>
-              </div>
-              <button
-                onClick={() => openChatWithUser(foundUser)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#00FF85] text-[#040B0A] text-xs font-bold"
-              >
-                <MessageSquare size={14} /> Message
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Connected Contacts List */}
-        <div className="p-6 rounded-2xl bg-[#07110E] border border-white/10">
-          <div className="flex items-center gap-2 mb-4">
-            <UserCheck size={18} className="text-[#00FF85]" />
-            <h2 className="text-base font-bold text-white">Your Contacts ({connectedContacts.length})</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+              <Users size={20} className="text-[#00FF85]" />
+              People & Contacts
+            </h1>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Find friends on SUTRAA by name, @username, or phone number.
+            </p>
           </div>
 
-          {connectedContacts.length === 0 ? (
-            <p className="text-sm text-gray-500 py-6 text-center">
-              No contacts added yet. Search a @username above to connect!
-            </p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {connectedContacts.map((contact) => (
-                <div
-                  key={contact.uid}
-                  className="p-4 rounded-xl bg-[#0C1B17] border border-white/5 flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-full bg-[#0F2E22] text-[#00FF85] flex items-center justify-center font-bold shrink-0">
-                      {contact.displayName.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{contact.displayName}</p>
-                      <p className="text-xs text-[#00FF85]/80 truncate">
-                        {contact.username ? `@${contact.username}` : contact.email}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => navigate('/dashboard/chats', { state: { openChatId: contact.chatId } })}
-                    className="p-2 rounded-lg bg-[#00FF85]/15 text-[#00FF85] hover:bg-[#00FF85] hover:text-[#040B0A] transition"
-                  >
-                    <MessageSquare size={16} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="relative w-full sm:w-80">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, @username, or phone..."
+              className="w-full bg-[#07110E] border border-white/10 rounded-full pl-10 pr-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#00FF85]"
+            />
+          </div>
         </div>
+
+        {loading ? (
+          <p className="text-sm text-gray-500 text-center py-12">Loading contacts...</p>
+        ) : filteredUsers.length === 0 ? (
+          <div className="p-10 rounded-2xl bg-[#07110E] border border-white/10 text-center">
+            <p className="text-sm text-gray-400">No contacts matched "{search}".</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredUsers.map((u) => (
+              <div
+                key={u.uid}
+                className="p-4 rounded-2xl bg-[#07110E] border border-white/10 hover:border-[#00FF85]/30 flex items-center justify-between gap-3 transition"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  {u.photoURL ? (
+                    <img
+                      src={u.photoURL}
+                      alt={u.displayName}
+                      className="w-12 h-12 rounded-full object-cover shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-[#0F2E22] text-[#00FF85] flex items-center justify-center font-bold text-base shrink-0">
+                      {(u.displayName || 'U').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-white truncate">
+                      {u.displayName || 'Sutra User'}
+                    </h3>
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs mt-0.5">
+                      {u.username && (
+                        <span className="inline-flex items-center gap-0.5 text-[#00FF85]">
+                          <AtSign size={11} />
+                          {u.username}
+                        </span>
+                      )}
+                      {u.phoneNumber && (
+                        <span className="inline-flex items-center gap-1 text-gray-400">
+                          <Phone size={11} />
+                          {u.phoneNumber}
+                        </span>
+                      )}
+                    </div>
+                    {u.bio && (
+                      <p className="text-[11px] text-gray-500 truncate mt-1">{u.bio}</p>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenChatWithUser(u)}
+                  disabled={openingUid === u.uid}
+                  className="px-3.5 py-2 rounded-xl bg-[#00FF85] hover:bg-[#00e677] disabled:opacity-50 text-[#040B0A] text-xs font-bold inline-flex items-center gap-1.5 shrink-0 transition"
+                >
+                  <MessageSquare size={14} />
+                  <span>{openingUid === u.uid ? 'Opening...' : 'Message'}</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

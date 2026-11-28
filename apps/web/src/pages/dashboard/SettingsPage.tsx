@@ -13,6 +13,7 @@ import {
 import { updateProfile, sendPasswordResetEmail, signOut } from 'firebase/auth';
 import {
   AtSign,
+  Phone,
   CheckCircle2,
   AlertCircle,
   ArrowLeft,
@@ -33,7 +34,6 @@ import { auth, db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { slimScrollbar } from '../../types/chat';
 
-// Compress uploaded image to 200x200 JPEG Data URL so it stores cleanly in Firestore
 function compressImageToDataUrl(file: File, maxSize = 200): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -70,6 +70,38 @@ function compressImageToDataUrl(file: File, maxSize = 200): Promise<string> {
   });
 }
 
+// Normalize phone input into formatted "+91XXXXXXXXXX" and searchable raw digits
+function normalizePhoneNumber(rawInput: string): {
+  valid: boolean;
+  formatted: string;
+  digits: string;
+} {
+  const trimmed = rawInput.trim();
+  if (!trimmed) return { valid: true, formatted: '', digits: '' };
+
+  const onlyDigits = trimmed.replace(/\D/g, '');
+
+  // Standard 10-digit Indian mobile number
+  if (onlyDigits.length === 10) {
+    return {
+      valid: true,
+      formatted: `+91${onlyDigits}`,
+      digits: onlyDigits,
+    };
+  }
+
+  // With country code (e.g. 919876543210 or international 11-15 digits)
+  if (onlyDigits.length >= 11 && onlyDigits.length <= 15) {
+    return {
+      valid: true,
+      formatted: `+${onlyDigits}`,
+      digits: onlyDigits.slice(-10),
+    };
+  }
+
+  return { valid: false, formatted: '', digits: '' };
+}
+
 export default function SettingsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -78,14 +110,15 @@ export default function SettingsPage() {
   // Profile fields
   const [displayName, setDisplayName] = useState('');
   const [username, setUsername] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [bio, setBio] = useState('Hey there! I am using SUTRAA.');
   const [photoURL, setPhotoURL] = useState('');
 
-  // Privacy toggles (synced with Firestore)
+  // Privacy toggles
   const [showOnlineStatus, setShowOnlineStatus] = useState(true);
   const [readReceipts, setReadReceipts] = useState(true);
 
-  // App & Browser preferences (localStorage)
+  // App & Browser preferences
   const [soundEnabled, setSoundEnabled] = useState(() => {
     if (typeof window === 'undefined') return true;
     return localStorage.getItem('sutraa_sound_enabled') !== 'false';
@@ -112,6 +145,7 @@ export default function SettingsPage() {
         const data = snap.data();
         if (data.displayName) setDisplayName(data.displayName);
         if (data.username) setUsername(data.username);
+        if (data.phoneNumber) setPhoneNumber(data.phoneNumber);
         if (typeof data.bio === 'string') setBio(data.bio);
         if (data.photoURL) setPhotoURL(data.photoURL);
         if (typeof data.showOnlineStatus === 'boolean') setShowOnlineStatus(data.showOnlineStatus);
@@ -151,19 +185,42 @@ export default function SettingsPage() {
       return;
     }
 
+    const parsedPhone = normalizePhoneNumber(phoneNumber);
+    if (!parsedPhone.valid) {
+      setStatus({
+        type: 'error',
+        msg: 'Please enter a valid 10-digit mobile number (or leave it empty).',
+      });
+      return;
+    }
+
     setSaving(true);
     setStatus(null);
 
     try {
-      const existingSnap = await getDocs(
+      // 1. Check username uniqueness
+      const existingUsernameSnap = await getDocs(
         query(collection(db, 'users'), where('username', '==', cleanUsername))
       );
-
-      const takenBySomeoneElse = existingSnap.docs.some((d) => d.id !== user.uid);
-      if (takenBySomeoneElse) {
+      if (existingUsernameSnap.docs.some((d) => d.id !== user.uid)) {
         setStatus({ type: 'error', msg: `@${cleanUsername} is already taken. Try another one.` });
         setSaving(false);
         return;
+      }
+
+      // 2. Check phone number uniqueness (if entered)
+      if (parsedPhone.digits) {
+        const existingPhoneSnap = await getDocs(
+          query(collection(db, 'users'), where('phoneDigits', '==', parsedPhone.digits))
+        );
+        if (existingPhoneSnap.docs.some((d) => d.id !== user.uid)) {
+          setStatus({
+            type: 'error',
+            msg: 'This phone number is already linked to another SUTRAA account.',
+          });
+          setSaving(false);
+          return;
+        }
       }
 
       const finalName = displayName.trim() || user.displayName || 'Sutra User';
@@ -178,6 +235,8 @@ export default function SettingsPage() {
           uid: user.uid,
           displayName: finalName,
           username: cleanUsername,
+          phoneNumber: parsedPhone.formatted,
+          phoneDigits: parsedPhone.digits,
           bio: bio.trim(),
           photoURL: photoURL || '',
           email: user.email || '',
@@ -189,7 +248,8 @@ export default function SettingsPage() {
       );
 
       setUsername(cleanUsername);
-      setStatus({ type: 'success', msg: 'Profile & settings saved successfully!' });
+      setPhoneNumber(parsedPhone.formatted);
+      setStatus({ type: 'success', msg: 'Profile & phone number saved successfully!' });
     } catch {
       setStatus({ type: 'error', msg: 'Failed to save changes. Please try again.' });
     } finally {
@@ -206,11 +266,7 @@ export default function SettingsPage() {
     if (field === 'readReceipts') setReadReceipts(nextVal);
 
     try {
-      await setDoc(
-        doc(db, 'users', user.uid),
-        { [field]: nextVal },
-        { merge: true }
-      );
+      await setDoc(doc(db, 'users', user.uid), { [field]: nextVal }, { merge: true });
     } catch {
       setStatus({ type: 'error', msg: 'Could not update privacy setting.' });
     }
@@ -300,7 +356,7 @@ export default function SettingsPage() {
           )}
         </div>
 
-        {/* Global Alert Banner */}
+        {/* Status Banner */}
         {status && (
           <div
             className={`flex items-center gap-2.5 p-3.5 rounded-2xl text-xs font-medium ${
@@ -363,9 +419,14 @@ export default function SettingsPage() {
 
             <div className="text-center sm:text-left space-y-1.5">
               <h3 className="text-lg font-bold text-white">{displayName || 'Sutra User'}</h3>
-              <p className="text-xs text-[#00FF85]">
-                {username ? `@${username}` : 'Set your unique @username'}
-              </p>
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs">
+                <span className="text-[#00FF85]">
+                  {username ? `@${username}` : 'Set your unique @username'}
+                </span>
+                {phoneNumber && (
+                  <span className="text-gray-400">• {phoneNumber}</span>
+                )}
+              </div>
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
                 <button
                   type="button"
@@ -422,6 +483,43 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          {/* Phone Number & Email Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase mb-1.5">
+                Phone Number (Findable in Search)
+              </label>
+              <div className="relative">
+                <Phone
+                  size={15}
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#00FF85]"
+                />
+                <input
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="+91 98765 43210"
+                  className="w-full bg-[#0C1B17] border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00FF85]"
+                />
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1">
+                Friends can search you by phone number or @username.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase mb-1.5">
+                Account Email (Read-only)
+              </label>
+              <input
+                type="text"
+                value={user?.email || ''}
+                disabled
+                className="w-full bg-[#050C0A] border border-white/5 rounded-xl px-4 py-2.5 text-sm text-gray-500 cursor-not-allowed"
+              />
+            </div>
+          </div>
+
           <div>
             <div className="flex justify-between items-center mb-1.5">
               <label className="block text-xs font-semibold text-gray-400 uppercase">
@@ -436,18 +534,6 @@ export default function SettingsPage() {
               onChange={(e) => setBio(e.target.value)}
               placeholder="Write a short status or bio..."
               className="w-full bg-[#0C1B17] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00FF85]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-400 uppercase mb-1.5">
-              Account Email (Read-only)
-            </label>
-            <input
-              type="text"
-              value={user?.email || ''}
-              disabled
-              className="w-full bg-[#050C0A] border border-white/5 rounded-xl px-4 py-2.5 text-sm text-gray-500 cursor-not-allowed"
             />
           </div>
 
