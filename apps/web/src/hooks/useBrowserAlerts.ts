@@ -8,7 +8,6 @@ export function useBrowserAlerts(totalUnreadCount: number) {
     return 'denied';
   });
 
-  // 1. Chrome Tab Title mein live unread count dikhao: "(3) SUTRAA"
   useEffect(() => {
     if (totalUnreadCount > 0) {
       document.title = `(${totalUnreadCount}) SUTRAA`;
@@ -20,7 +19,6 @@ export function useBrowserAlerts(totalUnreadCount: number) {
     };
   }, [totalUnreadCount]);
 
-  // 2. Chrome Notification Permission Request
   const requestPermission = useCallback(async () => {
     if (typeof window === 'undefined' || !('Notification' in window)) return;
     if (Notification.permission === 'default') {
@@ -31,8 +29,14 @@ export function useBrowserAlerts(totalUnreadCount: number) {
     }
   }, []);
 
-  // 3. Soft Notification Sound (Web Audio API)
   const playNotificationSound = useCallback(() => {
+    if (
+      typeof window !== 'undefined' &&
+      localStorage.getItem('sutraa_sound_enabled') === 'false'
+    ) {
+      return;
+    }
+
     try {
       const AudioCtx =
         window.AudioContext ||
@@ -44,8 +48,8 @@ export function useBrowserAlerts(totalUnreadCount: number) {
       const gain = ctx.createGain();
 
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.09); // A5
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.09);
 
       gain.gain.setValueAtTime(0.08, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
@@ -60,12 +64,10 @@ export function useBrowserAlerts(totalUnreadCount: number) {
     }
   }, []);
 
-  // 4. Trigger Chrome Desktop Popup + Sound
   const triggerIncomingAlert = useCallback(
     (senderName: string, messageText: string, onClick?: () => void) => {
       playNotificationSound();
 
-      
       if (
         typeof window !== 'undefined' &&
         'Notification' in window &&

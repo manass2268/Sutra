@@ -33,6 +33,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
   const [chats, setChats] = useState<ChatRoom[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [myReadReceipts, setMyReadReceipts] = useState(true);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [showRightPanel, setShowRightPanel] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1280 : false
@@ -42,6 +43,19 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeChat = chats.find((c) => c.id === activeChatId) || null;
+
+  // Listen to current user's Read Receipts privacy preference
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsub = onSnapshot(doc(db, 'users', currentUser.uid), (snap) => {
+      if (snap.exists() && typeof snap.data().readReceipts === 'boolean') {
+        setMyReadReceipts(snap.data().readReceipts);
+      } else {
+        setMyReadReceipts(true);
+      }
+    });
+    return () => unsub();
+  }, [currentUser]);
 
   // Total unread count across all chats (for Chrome Tab Badge)
   const totalUnreadMessages = useMemo(() => {
@@ -170,7 +184,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     return () => unsub();
   }, [currentUser, location.state, triggerIncomingAlert]);
 
-  // Real-time Messages Listener
+  // Real-time Messages Listener (Respects Read Receipts Privacy Setting)
   useEffect(() => {
     if (!activeChatId || !currentUser) {
       setMessages([]);
@@ -195,22 +209,27 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
       });
 
       if (unreadDocs.length > 0 && document.visibilityState === 'visible') {
-        const batch = writeBatch(db);
-        unreadDocs.forEach((docSnap) => {
-          batch.update(docSnap.ref, { status: 'read' });
-        });
-        batch.update(doc(db, 'chats', activeChatId), {
-          lastMessageStatus: 'read',
-          [`unreadCounts.${currentUser.uid}`]: 0,
-        });
-        batch.commit().catch(() => {});
+        if (myReadReceipts) {
+          const batch = writeBatch(db);
+          unreadDocs.forEach((docSnap) => {
+            batch.update(docSnap.ref, { status: 'read' });
+          });
+          batch.update(doc(db, 'chats', activeChatId), {
+            lastMessageStatus: 'read',
+            [`unreadCounts.${currentUser.uid}`]: 0,
+          });
+          batch.commit().catch(() => {});
+        } else {
+          // Clear local unread badge without sending blue ticks
+          markChatAsRead(activeChatId);
+        }
       } else if (document.visibilityState === 'visible') {
         markChatAsRead(activeChatId);
       }
     });
 
     return () => unsub();
-  }, [activeChatId, currentUser?.uid]);
+  }, [activeChatId, currentUser?.uid, myReadReceipts]);
 
   // Real-time Typing Status Handler
   const handleTypingActivity = (isTyping: boolean) => {
@@ -244,16 +263,19 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     }
 
     const mySnap = await getDoc(doc(db, 'users', currentUser.uid));
-    const myUsername = mySnap.exists() ? mySnap.data().username : '';
+    const myData = mySnap.exists() ? mySnap.data() : {};
+    const myUsername = myData.username || '';
+    const myPhotoURL = myData.photoURL || currentUser.photoURL || '';
+    const myDisplayName = myData.displayName || currentUser.displayName || 'Sutra User';
 
     const newChatRef = await addDoc(collection(db, 'chats'), {
       isGroup: false,
       participants: [currentUser.uid, targetUser.uid],
       participantDetails: {
         [currentUser.uid]: {
-          displayName: currentUser.displayName || 'Sutra User',
-          username: myUsername || '',
-          photoURL: currentUser.photoURL || '',
+          displayName: myDisplayName,
+          username: myUsername,
+          photoURL: myPhotoURL,
           email: currentUser.email || '',
         },
         [targetUser.uid]: {
@@ -281,14 +303,17 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     if (!currentUser || !groupName.trim() || selectedUsers.length === 0) return;
 
     const mySnap = await getDoc(doc(db, 'users', currentUser.uid));
-    const myUsername = mySnap.exists() ? mySnap.data().username : '';
+    const myData = mySnap.exists() ? mySnap.data() : {};
+    const myUsername = myData.username || '';
+    const myPhotoURL = myData.photoURL || currentUser.photoURL || '';
+    const myDisplayName = myData.displayName || currentUser.displayName || 'You';
 
     const participantIds = [currentUser.uid, ...selectedUsers.map((u) => u.uid)];
     const participantDetails: Record<string, any> = {
       [currentUser.uid]: {
-        displayName: currentUser.displayName || 'You',
-        username: myUsername || '',
-        photoURL: currentUser.photoURL || '',
+        displayName: myDisplayName,
+        username: myUsername,
+        photoURL: myPhotoURL,
         email: currentUser.email || '',
       },
     };
@@ -309,7 +334,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
       isGroup: true,
       participants: participantIds,
       participantDetails,
-      lastMessage: `${currentUser.displayName || 'Admin'} created group`,
+      lastMessage: `${myDisplayName} created group`,
       lastSenderId: currentUser.uid,
       lastMessageStatus: 'sent',
       lastMessageDeleted: false,
