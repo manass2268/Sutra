@@ -1,0 +1,15 @@
+{
+  "name": "SUTRAA Web",
+  "short_name": "SUTRAA",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#040B0A",
+  "theme_color": "#00FF85",
+  "icons": [
+    {
+      "src": "/SUTRA-favicon-64.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    }
+  ]
+}
