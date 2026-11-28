@@ -9,11 +9,13 @@ import {
   addDoc,
   serverTimestamp,
   doc,
+  setDoc,
   updateDoc,
   increment,
   getDoc,
   writeBatch,
   arrayUnion,
+  arrayRemove,
   deleteField,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -254,6 +256,16 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
 
   const handleStartDirectChat = async (targetUser: AppUser) => {
     if (!currentUser) return;
+
+    // Automatically add user to savedContacts so they appear in My Contacts
+    await setDoc(
+      doc(db, 'users', currentUser.uid),
+      {
+        savedContacts: arrayUnion(targetUser.uid),
+        removedContacts: arrayRemove(targetUser.uid),
+      },
+      { merge: true }
+    ).catch(() => {});
 
     const existing = chats.find((c) => !c.isGroup && c.participants.includes(targetUser.uid));
     if (existing) {
