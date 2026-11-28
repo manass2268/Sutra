@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   collection,
@@ -13,11 +13,14 @@ import {
   increment,
   getDoc,
   writeBatch,
+  arrayUnion,
+  deleteField,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUsersPresence } from '../../hooks/useUserPresence';
-import type { AppUser, ChatRoom, Message } from '../../types/chat';
+import { useBrowserAlerts } from '../../hooks/useBrowserAlerts';
+import type { AppUser, ChatRoom, Message, ReplyPreview } from '../../types/chat';
 import ChatListSidebar from '../../components/chat/ChatListSidebar';
 import ChatWindow from '../../components/chat/ChatWindow';
 import ChatInfoPanel from '../../components/chat/ChatInfoPanel';
@@ -35,9 +38,23 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     typeof window !== 'undefined' ? window.innerWidth >= 1280 : false
   );
 
+  const prevUnreadTotalRef = useRef<number | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const activeChat = chats.find((c) => c.id === activeChatId) || null;
 
-  // Sabhi users ki UIDs aur unke chat timestamps collect karo (fallback last seen ke liye)
+  // Total unread count across all chats (for Chrome Tab Badge)
+  const totalUnreadMessages = useMemo(() => {
+    if (!currentUser) return 0;
+    return chats.reduce((sum, chat) => {
+      if (chat.id === activeChatId && document.visibilityState === 'visible') return sum;
+      return sum + (chat.unreadCounts?.[currentUser.uid] || 0);
+    }, 0);
+  }, [chats, currentUser, activeChatId]);
+
+  const { permission, requestPermission, triggerIncomingAlert } =
+    useBrowserAlerts(totalUnreadMessages);
+
   const { allOtherUserIds, fallbackTimestamps } = useMemo(() => {
     const ids = new Set<string>();
     const fallbacks: Record<string, any> = {};
@@ -74,7 +91,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     }
   };
 
-  // Real-time Chats Listener
+  // Real-time Chats Listener + Chrome Desktop Notification Trigger
   useEffect(() => {
     if (!currentUser) return;
 
@@ -84,6 +101,9 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
+      let latestIncomingChat: ChatRoom | null = null;
+      let latestIncomingTime = 0;
+
       const chatList: ChatRoom[] = snapshot.docs.map((docSnap) => {
         const data = docSnap.data() as Omit<ChatRoom, 'id'>;
 
@@ -97,14 +117,49 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
           }).catch(() => {});
         }
 
-        return {
-          id: docSnap.id,
-          ...data,
-        };
+        const chatObj: ChatRoom = { id: docSnap.id, ...data };
+
+        // Detect newest incoming message for notification
+        const updatedSec = data.updatedAt?.seconds || 0;
+        if (
+          data.lastSenderId &&
+          data.lastSenderId !== currentUser.uid &&
+          updatedSec > latestIncomingTime
+        ) {
+          latestIncomingTime = updatedSec;
+          latestIncomingChat = chatObj;
+        }
+
+        return chatObj;
       });
 
       chatList.sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
       setChats(chatList);
+
+      // Fire Chrome alert if unread count increased after initial load
+      const currentUnreadSum = chatList.reduce(
+        (acc, c) => acc + (c.unreadCounts?.[currentUser.uid] || 0),
+        0
+      );
+
+      if (
+        prevUnreadTotalRef.current !== null &&
+        currentUnreadSum > prevUnreadTotalRef.current &&
+        latestIncomingChat
+      ) {
+        const targetChat = latestIncomingChat as ChatRoom;
+        const senderDetail = targetChat.lastSenderId
+          ? targetChat.participantDetails?.[targetChat.lastSenderId]
+          : undefined;
+        const title = targetChat.isGroup
+          ? `${targetChat.name || 'Group'} • ${senderDetail?.displayName || 'Member'}`
+          : senderDetail?.displayName || 'New Message';
+
+        triggerIncomingAlert(title, targetChat.lastMessage || 'Sent a message', () => {
+          setActiveChatId(targetChat.id);
+        });
+      }
+      prevUnreadTotalRef.current = currentUnreadSum;
 
       const stateChatId = (location.state as any)?.openChatId;
       if (stateChatId && chatList.some((c) => c.id === stateChatId)) {
@@ -113,7 +168,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     });
 
     return () => unsub();
-  }, [currentUser, location.state]);
+  }, [currentUser, location.state, triggerIncomingAlert]);
 
   // Real-time Messages Listener
   useEffect(() => {
@@ -139,7 +194,7 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
         return m.senderId !== currentUser.uid && m.status !== 'read';
       });
 
-      if (unreadDocs.length > 0) {
+      if (unreadDocs.length > 0 && document.visibilityState === 'visible') {
         const batch = writeBatch(db);
         unreadDocs.forEach((docSnap) => {
           batch.update(docSnap.ref, { status: 'read' });
@@ -149,13 +204,34 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
           [`unreadCounts.${currentUser.uid}`]: 0,
         });
         batch.commit().catch(() => {});
-      } else {
+      } else if (document.visibilityState === 'visible') {
         markChatAsRead(activeChatId);
       }
     });
 
     return () => unsub();
   }, [activeChatId, currentUser?.uid]);
+
+  // Real-time Typing Status Handler
+  const handleTypingActivity = (isTyping: boolean) => {
+    if (!activeChatId || !currentUser) return;
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    updateDoc(doc(db, 'chats', activeChatId), {
+      [`typingUsers.${currentUser.uid}`]: isTyping,
+    }).catch(() => {});
+
+    if (isTyping) {
+      typingTimeoutRef.current = setTimeout(() => {
+        updateDoc(doc(db, 'chats', activeChatId), {
+          [`typingUsers.${currentUser.uid}`]: false,
+        }).catch(() => {});
+      }, 2500);
+    }
+  };
 
   const handleStartDirectChat = async (targetUser: AppUser) => {
     if (!currentUser) return;
@@ -190,7 +266,9 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
       lastMessage: 'Started a conversation',
       lastSenderId: currentUser.uid,
       lastMessageStatus: 'sent',
+      lastMessageDeleted: false,
       unreadCounts: { [currentUser.uid]: 0, [targetUser.uid]: 0 },
+      typingUsers: {},
       updatedAt: serverTimestamp(),
       createdBy: currentUser.uid,
     });
@@ -234,7 +312,9 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
       lastMessage: `${currentUser.displayName || 'Admin'} created group`,
       lastSenderId: currentUser.uid,
       lastMessageStatus: 'sent',
+      lastMessageDeleted: false,
       unreadCounts,
+      typingUsers: {},
       updatedAt: serverTimestamp(),
       createdBy: currentUser.uid,
     });
@@ -243,8 +323,11 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
     setShowNewChatModal(false);
   };
 
-  const handleSendMessage = async (textToSend: string) => {
+  // Send Message (with optional Quote Reply)
+  const handleSendMessage = async (textToSend: string, replyTo?: ReplyPreview | null) => {
     if (!activeChatId || !activeChat || !currentUser) return;
+
+    handleTypingActivity(false);
 
     await addDoc(collection(db, 'chats', activeChatId, 'messages'), {
       text: textToSend,
@@ -252,6 +335,10 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
       senderName: currentUser.displayName || 'User',
       senderPhoto: currentUser.photoURL || '',
       status: 'sent',
+      isDeleted: false,
+      deletedFor: [],
+      reactions: {},
+      replyTo: replyTo || null,
       createdAt: serverTimestamp(),
     });
 
@@ -259,6 +346,8 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
       lastMessage: textToSend,
       lastSenderId: currentUser.uid,
       lastMessageStatus: 'sent',
+      lastMessageDeleted: false,
+      [`typingUsers.${currentUser.uid}`]: false,
       updatedAt: serverTimestamp(),
       [`unreadCounts.${currentUser.uid}`]: 0,
     };
@@ -271,6 +360,59 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
 
     await updateDoc(doc(db, 'chats', activeChatId), updatePayload);
   };
+
+  // Instagram / WhatsApp Style Toggle Reaction
+  const handleToggleReaction = async (messageId: string, emoji: string) => {
+    if (!activeChatId || !currentUser) return;
+    const targetMsg = messages.find((m) => m.id === messageId);
+    const currentEmoji = targetMsg?.reactions?.[currentUser.uid];
+
+    try {
+      await updateDoc(doc(db, 'chats', activeChatId, 'messages', messageId), {
+        [`reactions.${currentUser.uid}`]: currentEmoji === emoji ? deleteField() : emoji,
+      });
+    } catch (err) {
+      console.error('Failed to react:', err);
+    }
+  };
+
+  const handleDeleteForMe = async (messageId: string) => {
+    if (!activeChatId || !currentUser) return;
+    try {
+      await updateDoc(doc(db, 'chats', activeChatId, 'messages', messageId), {
+        deletedFor: arrayUnion(currentUser.uid),
+      });
+    } catch (err) {
+      console.error('Failed to delete message for me:', err);
+    }
+  };
+
+  const handleDeleteForEveryone = async (messageId: string) => {
+    if (!activeChatId || !currentUser) return;
+    try {
+      await updateDoc(doc(db, 'chats', activeChatId, 'messages', messageId), {
+        isDeleted: true,
+        text: 'This message was deleted',
+        reactions: {},
+        replyTo: null,
+      });
+
+      const isLastMsg = messages[messages.length - 1]?.id === messageId;
+      if (isLastMsg) {
+        await updateDoc(doc(db, 'chats', activeChatId), {
+          lastMessage: 'This message was deleted',
+          lastMessageDeleted: true,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to delete message for everyone:', err);
+    }
+  };
+
+  const visibleMessages = useMemo(() => {
+    if (!currentUser) return messages;
+    return messages.filter((m) => !m.deletedFor?.includes(currentUser.uid));
+  }, [messages, currentUser]);
 
   return (
     <div className="h-full w-full bg-[#040B0A] text-gray-100 flex overflow-hidden font-sans relative">
@@ -289,13 +431,19 @@ export default function ChatsPage({ defaultFilter = 'All' }: { defaultFilter?: '
 
       <ChatWindow
         activeChat={activeChat}
-        messages={messages}
+        messages={visibleMessages}
         currentUserId={currentUser?.uid}
         presenceMap={presenceMap}
         showRightPanel={showRightPanel}
+        notificationPermission={permission}
+        onRequestNotificationPermission={requestPermission}
         onToggleRightPanel={() => setShowRightPanel((prev) => !prev)}
         onBack={() => setActiveChatId(null)}
+        onTyping={handleTypingActivity}
         onSendMessage={handleSendMessage}
+        onToggleReaction={handleToggleReaction}
+        onDeleteForMe={handleDeleteForMe}
+        onDeleteForEveryone={handleDeleteForEveryone}
         onOpenNewChat={() => setShowNewChatModal(true)}
       />
 

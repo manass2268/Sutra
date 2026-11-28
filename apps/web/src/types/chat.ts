@@ -15,6 +15,12 @@ export interface UserPresenceInfo {
   statusText: string;
 }
 
+export interface ReplyPreview {
+  id: string;
+  senderName: string;
+  text: string;
+}
+
 export interface ChatRoom {
   id: string;
   name?: string;
@@ -27,7 +33,9 @@ export interface ChatRoom {
   lastMessage?: string;
   lastSenderId?: string;
   lastMessageStatus?: MessageStatus;
+  lastMessageDeleted?: boolean;
   unreadCounts?: Record<string, number>;
+  typingUsers?: Record<string, boolean>;
   updatedAt?: any;
   createdBy?: string;
 }
@@ -39,6 +47,10 @@ export interface Message {
   senderName: string;
   senderPhoto?: string;
   status?: MessageStatus;
+  isDeleted?: boolean;
+  deletedFor?: string[];
+  reactions?: Record<string, string>;
+  replyTo?: ReplyPreview | null;
   createdAt?: any;
 }
 

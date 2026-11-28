@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Users, Search, Plus, MoreVertical, Check, CheckCheck } from 'lucide-react';
+import { Users, Search, Plus, MoreVertical, Check, CheckCheck, Ban } from 'lucide-react';
 import { type ChatRoom, type UserPresenceInfo, slimScrollbar } from '../../types/chat';
 
 interface ChatListSidebarProps {
@@ -195,6 +195,9 @@ export default function ChatListSidebar({
             const isLastFromMe = chat.lastSenderId === currentUserId;
             const otherUid = getOtherUid(chat);
             const isOnline = otherUid ? Boolean(presenceMap[otherUid]?.isOnline) : false;
+            const isOtherTyping = chat.participants.some(
+              (uid) => uid !== currentUserId && chat.typingUsers?.[uid]
+            );
 
             return (
               <div
@@ -223,19 +226,47 @@ export default function ChatListSidebar({
 
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-baseline mb-0.5">
-                    <h3 className={`text-[15px] truncate ${unread > 0 ? 'font-bold text-white' : 'font-medium text-gray-100'}`}>
+                    <h3
+                      className={`text-[15px] truncate ${
+                        unread > 0 ? 'font-bold text-white' : 'font-medium text-gray-100'
+                      }`}
+                    >
                       {name}
                     </h3>
-                    <span className={`text-[11px] shrink-0 ml-2 ${unread > 0 ? 'text-[#00FF85] font-semibold' : 'text-gray-500'}`}>
+                    <span
+                      className={`text-[11px] shrink-0 ml-2 ${
+                        unread > 0 ? 'text-[#00FF85] font-semibold' : 'text-gray-500'
+                      }`}
+                    >
                       {formatTime(chat.updatedAt)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center gap-2">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      {isLastFromMe && renderSidebarTick(chat)}
-                      <p className={`text-[13px] truncate ${unread > 0 ? 'text-gray-100 font-medium' : 'text-gray-400'}`}>
-                        {chat.lastMessage || 'Say hi!'}
-                      </p>
+                      {isOtherTyping ? (
+                        <p className="text-[13px] text-[#00FF85] font-semibold truncate">
+                          typing...
+                        </p>
+                      ) : (
+                        <>
+                          {chat.lastMessageDeleted ? (
+                            <Ban size={13} className="text-gray-500 shrink-0" />
+                          ) : (
+                            isLastFromMe && renderSidebarTick(chat)
+                          )}
+                          <p
+                            className={`text-[13px] truncate ${
+                              chat.lastMessageDeleted
+                                ? 'italic text-gray-500'
+                                : unread > 0
+                                ? 'text-gray-100 font-medium'
+                                : 'text-gray-400'
+                            }`}
+                          >
+                            {chat.lastMessage || 'Say hi!'}
+                          </p>
+                        </>
+                      )}
                     </div>
                     {unread > 0 && (
                       <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#00FF85] text-[#040B0A] text-[11px] font-bold flex items-center justify-center shrink-0">

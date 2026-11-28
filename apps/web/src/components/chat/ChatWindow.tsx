@@ -12,14 +12,23 @@ import {
   Send,
   Check,
   CheckCheck,
+  ChevronDown,
+  Trash2,
+  Ban,
+  Reply,
+  X,
+  BellRing,
 } from 'lucide-react';
 import {
   type ChatRoom,
   type Message,
   type MessageStatus,
   type UserPresenceInfo,
+  type ReplyPreview,
   slimScrollbar,
 } from '../../types/chat';
+
+const QUICK_REACTIONS = ['❤️', '😂', '😮', '😢', '🙏', '👍'];
 
 interface ChatWindowProps {
   activeChat: ChatRoom | null;
@@ -27,9 +36,15 @@ interface ChatWindowProps {
   currentUserId?: string;
   presenceMap: Record<string, UserPresenceInfo>;
   showRightPanel: boolean;
+  notificationPermission?: NotificationPermission;
+  onRequestNotificationPermission?: () => void;
   onToggleRightPanel: () => void;
   onBack: () => void;
-  onSendMessage: (text: string) => Promise<void>;
+  onTyping: (isTyping: boolean) => void;
+  onSendMessage: (text: string, replyTo?: ReplyPreview | null) => Promise<void>;
+  onToggleReaction: (messageId: string, emoji: string) => Promise<void>;
+  onDeleteForMe: (messageId: string) => Promise<void>;
+  onDeleteForEveryone: (messageId: string) => Promise<void>;
   onOpenNewChat: () => void;
 }
 
@@ -39,17 +54,44 @@ export default function ChatWindow({
   currentUserId,
   presenceMap,
   showRightPanel,
+  notificationPermission,
+  onRequestNotificationPermission,
   onToggleRightPanel,
   onBack,
+  onTyping,
   onSendMessage,
+  onToggleReaction,
+  onDeleteForMe,
+  onDeleteForEveryone,
   onOpenNewChat,
 }: ChatWindowProps) {
   const [newMessage, setNewMessage] = useState('');
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [reactPickerMsgId, setReactPickerMsgId] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ReplyPreview | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
   }, [messages.length, activeChat?.id]);
+
+  useEffect(() => {
+    setReplyingTo(null);
+    setOpenMenuId(null);
+    setReactPickerMsgId(null);
+  }, [activeChat?.id]);
+
+  useEffect(() => {
+    if (!openMenuId && !reactPickerMsgId) return;
+    const handleOutsideClick = () => {
+      setOpenMenuId(null);
+      setReactPickerMsgId(null);
+    };
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, [openMenuId, reactPickerMsgId]);
 
   const getOtherUid = (chat: ChatRoom) => {
     if (chat.isGroup) return undefined;
@@ -68,7 +110,24 @@ export default function ChatWindow({
     return (otherUid && chat.participantDetails?.[otherUid]?.photoURL) || null;
   };
 
+  // Check if any other participant is currently typing
+  const typingParticipantNames = activeChat
+    ? activeChat.participants
+        .filter((uid) => uid !== currentUserId && activeChat.typingUsers?.[uid])
+        .map((uid) => activeChat.participantDetails?.[uid]?.displayName || 'Someone')
+    : [];
+
+  const isSomeoneTyping = typingParticipantNames.length > 0;
+
   const renderPresenceSubtitle = (chat: ChatRoom) => {
+    if (isSomeoneTyping) {
+      return (
+        <p className="text-[12px] text-[#00FF85] font-semibold leading-tight mt-0.5 truncate animate-pulse">
+          {chat.isGroup ? `${typingParticipantNames[0]} is typing...` : 'typing...'}
+        </p>
+      );
+    }
+
     if (chat.isGroup) {
       const onlineCount = chat.participants.filter(
         (uid) => uid !== currentUserId && presenceMap[uid]?.isOnline
@@ -137,12 +196,28 @@ export default function ChatWindow({
     );
   };
 
+  const handleInputChange = (val: string) => {
+    setNewMessage(val);
+    onTyping(val.trim().length > 0);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
     const text = newMessage.trim();
+    const replyPayload = replyingTo;
     setNewMessage('');
-    await onSendMessage(text);
+    setReplyingTo(null);
+    await onSendMessage(text, replyPayload);
+  };
+
+  const triggerReply = (msg: Message) => {
+    setReplyingTo({
+      id: msg.id,
+      senderName: msg.senderId === currentUserId ? 'You' : msg.senderName,
+      text: msg.text,
+    });
+    inputRef.current?.focus();
   };
 
   const otherUid = activeChat ? getOtherUid(activeChat) : undefined;
@@ -154,6 +229,23 @@ export default function ChatWindow({
         activeChat ? 'flex' : 'hidden md:flex'
       }`}
     >
+      {/* Chrome Desktop Notification Opt-In Bar */}
+      {notificationPermission === 'default' && onRequestNotificationPermission && (
+        <div className="px-4 py-2 bg-[#0B221A] border-b border-[#00FF85]/20 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2 text-xs text-gray-200">
+            <BellRing size={15} className="text-[#00FF85] shrink-0" />
+            <span>Turn on Chrome desktop notifications to get instant message alerts.</span>
+          </div>
+          <button
+            type="button"
+            onClick={onRequestNotificationPermission}
+            className="px-3 py-1 rounded-full bg-[#00FF85] hover:bg-[#00e677] text-[#040B0A] text-xs font-bold shrink-0 transition"
+          >
+            Enable Alerts
+          </button>
+        </div>
+      )}
+
       {activeChat ? (
         <>
           {/* Header */}
@@ -244,14 +336,46 @@ export default function ChatWindow({
               const isSameSenderAsPrev = prevMsg?.senderId === msg.senderId;
               const isLastMessage = idx === messages.length - 1;
               const status = resolveMessageStatus(msg, isLastMessage);
+              const isMenuOpen = openMenuId === msg.id;
+              const isReactOpen = reactPickerMsgId === msg.id;
+
+              const reactionEntries = msg.reactions ? Object.entries(msg.reactions) : [];
+              const hasReactions = reactionEntries.length > 0 && !msg.isDeleted;
 
               return (
                 <div
                   key={msg.id}
-                  className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${
-                    isSameSenderAsPrev ? 'mt-1' : 'mt-3'
-                  }`}
+                  className={`flex items-center gap-1.5 group ${
+                    isMe ? 'justify-end' : 'justify-start'
+                  } ${isSameSenderAsPrev ? 'mt-1' : 'mt-3'} ${hasReactions ? 'mb-3' : ''}`}
                 >
+                  {/* Hover Quick Actions (Left side for Sent messages) */}
+                  {isMe && !msg.isDeleted && (
+                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenMenuId(null);
+                          setReactPickerMsgId(isReactOpen ? null : msg.id);
+                        }}
+                        title="React"
+                        className="p-1.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition"
+                      >
+                        <Smile size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => triggerReply(msg)}
+                        title="Reply"
+                        className="p-1.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition"
+                      >
+                        <Reply size={15} />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Message Bubble */}
                   <div
                     className={`relative max-w-[82%] sm:max-w-[65%] px-3.5 py-2 shadow-sm ${
                       isMe
@@ -263,29 +387,224 @@ export default function ChatWindow({
                           }`
                     }`}
                   >
-                    {!isMe && activeChat.isGroup && !isSameSenderAsPrev && (
-                      <p className="text-[11px] font-semibold text-[#00FF85] mb-0.5">{msg.senderName}</p>
+                    {/* Instagram / WhatsApp Emoji Reaction Picker Popover */}
+                    {isReactOpen && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className={`absolute -top-11 ${
+                          isMe ? 'right-0' : 'left-0'
+                        } z-30 flex items-center gap-1 px-2 py-1 rounded-full bg-[#0B1915] border border-white/15 shadow-2xl`}
+                      >
+                        {QUICK_REACTIONS.map((emoji) => {
+                          const mySelected = currentUserId && msg.reactions?.[currentUserId] === emoji;
+                          return (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() => {
+                                setReactPickerMsgId(null);
+                                onToggleReaction(msg.id, emoji);
+                              }}
+                              className={`w-7 h-7 rounded-full flex items-center justify-center text-base hover:scale-125 transition-transform ${
+                                mySelected ? 'bg-[#00FF85]/20' : ''
+                              }`}
+                            >
+                              {emoji}
+                            </button>
+                          );
+                        })}
+                      </div>
                     )}
 
-                    <div className="flex flex-wrap items-end gap-x-2.5">
-                      <span className="text-[14px] leading-[1.4] break-words whitespace-pre-wrap">
-                        {msg.text}
-                      </span>
+                    {/* Dropdown Arrow Trigger */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setReactPickerMsgId(null);
+                        setOpenMenuId(isMenuOpen ? null : msg.id);
+                      }}
+                      title="Message options"
+                      className={`absolute top-1 right-1 p-1 rounded-full transition-opacity ${
+                        isMenuOpen
+                          ? 'opacity-100 bg-black/40 text-white'
+                          : 'opacity-0 group-hover:opacity-100 bg-black/30 text-gray-300 hover:text-white'
+                      }`}
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+
+                    {/* Options Dropdown */}
+                    {isMenuOpen && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className={`absolute top-7 ${
+                          isMe ? 'right-1' : 'left-1'
+                        } z-30 w-44 bg-[#0B1915] border border-white/15 rounded-xl shadow-2xl py-1 text-xs`}
+                      >
+                        {!msg.isDeleted && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              triggerReply(msg);
+                            }}
+                            className="w-full px-3.5 py-2 text-left text-gray-200 hover:bg-white/10 flex items-center gap-2 transition"
+                          >
+                            <Reply size={13} className="text-[#00FF85]" />
+                            <span>Reply</span>
+                          </button>
+                        )}
+                        {isMe && !msg.isDeleted && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              onDeleteForEveryone(msg.id);
+                            }}
+                            className="w-full px-3.5 py-2 text-left text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition"
+                          >
+                            <Trash2 size={13} />
+                            <span>Delete for everyone</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            onDeleteForMe(msg.id);
+                          }}
+                          className="w-full px-3.5 py-2 text-left text-gray-200 hover:bg-white/10 flex items-center gap-2 transition"
+                        >
+                          <Trash2 size={13} className="text-gray-400" />
+                          <span>Delete for me</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Quoted Reply Block inside Bubble */}
+                    {msg.replyTo && !msg.isDeleted && (
+                      <div className="mb-1.5 px-2.5 py-1.5 rounded-lg bg-black/25 border-l-2 border-[#00FF85] text-xs">
+                        <p className="font-semibold text-[#00FF85] text-[11px]">
+                          {msg.replyTo.senderName}
+                        </p>
+                        <p className="text-gray-300 truncate max-w-[240px]">{msg.replyTo.text}</p>
+                      </div>
+                    )}
+
+                    {!isMe && activeChat.isGroup && !isSameSenderAsPrev && (
+                      <p className="text-[11px] font-semibold text-[#00FF85] mb-0.5 pr-4">
+                        {msg.senderName}
+                      </p>
+                    )}
+
+                    <div className="flex flex-wrap items-end gap-x-2.5 pr-3">
+                      {msg.isDeleted ? (
+                        <span className="inline-flex items-center gap-1.5 text-[13px] italic text-gray-400">
+                          <Ban size={13} className="shrink-0" />
+                          This message was deleted
+                        </span>
+                      ) : (
+                        <span className="text-[14px] leading-[1.4] break-words whitespace-pre-wrap">
+                          {msg.text}
+                        </span>
+                      )}
+
                       <span
                         className={`inline-flex items-center gap-1 text-[10px] ml-auto pt-1 shrink-0 select-none ${
                           isMe ? 'text-gray-300/75' : 'text-gray-400/80'
                         }`}
                       >
                         {formatTime(msg.createdAt)}
-                        {isMe && renderTickIcon(status)}
+                        {isMe && !msg.isDeleted && renderTickIcon(status)}
                       </span>
                     </div>
+
+                    {/* Reaction Pill Badge */}
+                    {hasReactions && (
+                      <div
+                        onClick={() => {
+                          const myEmoji = currentUserId ? msg.reactions?.[currentUserId] : undefined;
+                          if (myEmoji) onToggleReaction(msg.id, myEmoji);
+                        }}
+                        title="Click to remove your reaction"
+                        className={`absolute -bottom-3 ${
+                          isMe ? 'right-2' : 'left-2'
+                        } px-1.5 py-0.5 rounded-full bg-[#0B1915] border border-white/15 text-xs flex items-center gap-1 shadow-md cursor-pointer`}
+                      >
+                        {Array.from(new Set(reactionEntries.map(([, emoji]) => emoji))).map((em) => (
+                          <span key={em}>{em}</span>
+                        ))}
+                        {reactionEntries.length > 1 && (
+                          <span className="text-[10px] text-gray-300 font-semibold">
+                            {reactionEntries.length}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
+
+                  {/* Hover Quick Actions (Right side for Received messages) */}
+                  {!isMe && !msg.isDeleted && (
+                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenMenuId(null);
+                          setReactPickerMsgId(isReactOpen ? null : msg.id);
+                        }}
+                        title="React"
+                        className="p-1.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition"
+                      >
+                        <Smile size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => triggerReply(msg)}
+                        title="Reply"
+                        className="p-1.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition"
+                      >
+                        <Reply size={15} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
+
+            {/* Live Animated Typing Bubble (WhatsApp / Instagram Style) */}
+            {isSomeoneTyping && (
+              <div className="flex justify-start mt-3">
+                <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-[#101E1A] border border-white/[0.06] flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00FF85] animate-bounce [animation-delay:-0.3s]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00FF85] animate-bounce [animation-delay:-0.15s]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00FF85] animate-bounce" />
+                </div>
+              </div>
+            )}
+
             <div ref={messagesEndRef} />
           </div>
+
+          {/* Reply Preview Bar (Above Input) */}
+          {replyingTo && (
+            <div className="px-4 py-2 bg-[#091713] border-t border-white/10 flex items-center justify-between gap-3">
+              <div className="pl-2.5 border-l-2 border-[#00FF85] min-w-0">
+                <p className="text-xs font-semibold text-[#00FF85]">
+                  Replying to {replyingTo.senderName}
+                </p>
+                <p className="text-xs text-gray-400 truncate">{replyingTo.text}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyingTo(null)}
+                className="p-1 rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
 
           {/* Input Bar */}
           <form onSubmit={handleSubmit} className="px-3 sm:px-4 py-2.5 bg-[#07110E] border-t border-white/10 shrink-0">
@@ -306,9 +625,10 @@ export default function ChatWindow({
               </button>
 
               <input
+                ref={inputRef}
                 type="text"
                 value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
+                onChange={(e) => handleInputChange(e.target.value)}
                 placeholder="Type a message..."
                 className="flex-1 bg-[#0C1B17] text-sm text-white placeholder-gray-500 px-4 py-2.5 rounded-full border border-white/10 focus:outline-none focus:border-[#00FF85]/50 transition min-w-0"
               />
