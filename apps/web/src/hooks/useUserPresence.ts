@@ -3,7 +3,6 @@ import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { UserPresenceInfo } from '../types/chat';
 
-// 1. Current user ka live online/offline status Firestore mein sync karne ke liye
 export function useTrackMyPresence(uid?: string) {
   useEffect(() => {
     if (!uid) return;
@@ -29,7 +28,6 @@ export function useTrackMyPresence(uid?: string) {
     };
 
     markOnline();
-
     const interval = setInterval(markOnline, 25000);
 
     const handleVisibilityChange = () => {
@@ -52,7 +50,6 @@ export function useTrackMyPresence(uid?: string) {
   }, [uid]);
 }
 
-// Helper: Timestamp ko WhatsApp style "last seen ..." format mein convert karne ke liye
 function formatLastSeen(lastSeen: any): string {
   if (!lastSeen) return 'last seen recently';
 
@@ -91,13 +88,15 @@ function formatLastSeen(lastSeen: any): string {
   return `last seen ${dateStr} at ${timeStr}`;
 }
 
-// 2. Baaki users ka real-time online / lastSeen status sunne ke liye (with fallback timestamp)
 export function useUsersPresence(
   userIds: string[],
   fallbackTimestamps?: Record<string, any>
 ): Record<string, UserPresenceInfo> {
   const [rawUsers, setRawUsers] = useState<
-    Record<string, { isOnline?: boolean; lastSeen?: any; createdAt?: any }>
+    Record<
+      string,
+      { isOnline?: boolean; lastSeen?: any; createdAt?: any; showOnlineStatus?: boolean }
+    >
   >({});
   const [tick, setTick] = useState(0);
 
@@ -117,6 +116,7 @@ export function useUsersPresence(
               isOnline: data.isOnline,
               lastSeen: data.lastSeen,
               createdAt: data.createdAt,
+              showOnlineStatus: data.showOnlineStatus,
             },
           }));
         }
@@ -140,6 +140,15 @@ export function useUsersPresence(
   uniqueIds.forEach((uid) => {
     const info = rawUsers[uid];
 
+    // Respect user's privacy setting
+    if (info?.showOnlineStatus === false) {
+      presenceMap[uid] = {
+        isOnline: false,
+        statusText: 'last seen hidden',
+      };
+      return;
+    }
+
     const lastSeenMillis =
       typeof info?.lastSeen?.toMillis === 'function'
         ? info.lastSeen.toMillis()
@@ -150,7 +159,6 @@ export function useUsersPresence(
     const genuinelyOnline =
       Boolean(info?.isOnline) && (lastSeenMillis === 0 || now - lastSeenMillis < 50000);
 
-    // Agar user ka lastSeen abhi tak set nahi hai toh chat activity ya createdAt se last seen dikhao
     const effectiveLastSeen =
       info?.lastSeen || fallbackTimestamps?.[uid] || info?.createdAt;
 

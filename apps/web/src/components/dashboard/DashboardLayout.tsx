@@ -35,7 +35,6 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Start real-time presence tracking for current user
   useTrackMyPresence(user?.uid);
 
   const [isPinned, setIsPinned] = useState(false);
@@ -43,6 +42,7 @@ export default function DashboardLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [username, setUsername] = useState('');
   const [liveDisplayName, setLiveDisplayName] = useState('');
+  const [livePhotoURL, setLivePhotoURL] = useState('');
 
   const isExpanded = isPinned || isHovered;
 
@@ -52,8 +52,10 @@ export default function DashboardLayout() {
 
     const unsub = onSnapshot(userRef, async (snap) => {
       if (snap.exists() && snap.data().username) {
-        setUsername(snap.data().username);
-        setLiveDisplayName(snap.data().displayName || user.displayName || 'User');
+        const data = snap.data();
+        setUsername(data.username);
+        setLiveDisplayName(data.displayName || user.displayName || 'User');
+        setLivePhotoURL(data.photoURL || user.photoURL || '');
       } else {
         const base = (user.email?.split('@')[0] || 'user')
           .replace(/[^a-z0-9]/gi, '')
@@ -251,7 +253,7 @@ export default function DashboardLayout() {
 
             <NavLink
               to="/dashboard/settings"
-              title="Edit Profile & @username"
+              title="Edit Profile & Settings"
               className="flex items-center gap-3"
             >
               <div className="hidden text-right sm:block">
@@ -262,9 +264,17 @@ export default function DashboardLayout() {
                   {username ? `@${username}` : user?.email}
                 </p>
               </div>
-              <div className="w-9 h-9 rounded-full bg-[#0F2E22] border border-[#00FF85]/35 flex items-center justify-center text-[#00FF85] font-bold text-sm shrink-0">
-                {displayNameToShow.charAt(0).toUpperCase()}
-              </div>
+              {livePhotoURL ? (
+                <img
+                  src={livePhotoURL}
+                  alt={displayNameToShow}
+                  className="w-9 h-9 rounded-full object-cover border border-[#00FF85]/40 shrink-0"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-[#0F2E22] border border-[#00FF85]/35 flex items-center justify-center text-[#00FF85] font-bold text-sm shrink-0">
+                  {displayNameToShow.charAt(0).toUpperCase()}
+                </div>
+              )}
             </NavLink>
           </div>
         </header>
