@@ -4,8 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 export default function ProtectedRoute() {
   const { user, loading } = useAuth();
 
-  // MAGIC TRICK: Yeh sirf 'npm run dev' par true hota hai. 
-  // Jaise hi GitHub/Vercel par jayega, yeh apne aap false ho jayega!
+  
   const isLocalTesting = import.meta.env.DEV;
 
   if (loading) {

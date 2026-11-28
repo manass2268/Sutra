@@ -35,7 +35,6 @@ function App() {
               <Route path="groups" element={<ChatsPage key="chats-groups" defaultFilter="Groups" />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="support" element={<SupportPage />} />
-              {/* Dashboard ke andar kisi galat URL par fallback */}
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Route>
           </Route>
